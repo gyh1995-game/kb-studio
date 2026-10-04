@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """打一个可分发的开源包：只装代码和文档，绝不带上你的知识库内容和任何凭据。
 
-    python tools/pack_release.py --out ../kb-studio-release
-    python tools/pack_release.py --out ../kb-studio-release --allow-dirty   # 只看不拦
+    python tools/pack_release.py                       # 吐到系统临时目录
+    python tools/pack_release.py --out D:/release/kb-studio
+    python tools/pack_release.py --out D:/release/kb-studio --allow-dirty   # 只看不拦
 
 扫到下面任何一样就直接失败、不产出包：
   · 凭据：cookie 值、api_key、sk- 开头的 token
@@ -14,10 +15,12 @@ import io
 import re
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
-OUT_DEFAULT = HERE.parent.parent / "kb-studio-release"
+# 默认吐到系统临时目录：落在项目树里，上层 git 仓库会把它当成一堆未跟踪文件（踩过）。
+OUT_DEFAULT = Path(tempfile.gettempdir()) / "kb-studio-release"
 
 INCLUDE_FILES = ["server.py", "fetchers.py", "requirements.txt", "requirements-asr.txt",
                  "config.example.json", ".gitignore", "README.md",

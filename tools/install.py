@@ -86,12 +86,20 @@ def whisper_model():
     if dst.exists():
         print("  ✓ 模型已在 %s" % dst)
         return True
+    code = ("import os;os.environ['HF_HOME']=r'%s';"
+            "from huggingface_hub import snapshot_download;"
+            "snapshot_download('Systran/faster-whisper-small',local_dir=r'%s')")
     print("  下载 faster-whisper small（约 460MB，HuggingFace）…")
-    return run([sys.executable, "-c",
-                "import os;os.environ['HF_HOME']=r'%s';"
-                "from huggingface_hub import snapshot_download;"
-                "snapshot_download('Systran/faster-whisper-small',"
-                "local_dir=r'%s')" % (MODELS, dst)], "拉 whisper 模型", timeout=3600)
+    if run([sys.executable, "-c", code % (MODELS, dst)], "拉 whisper 模型", timeout=3600):
+        return True
+    # 国内直连 HuggingFace 经常超时 —— 和 ffmpeg 走镜像是同一个道理，换源再试一次
+    print("  直连没拉下来，改用 hf-mirror.com 镜像重试…")
+    mirrored = "import os;os.environ['HF_ENDPOINT']='https://hf-mirror.com';" + code
+    if run([sys.executable, "-c", mirrored % (MODELS, dst)], "拉 whisper 模型（镜像）", timeout=3600):
+        return True
+    print("      手动办法：把 https://hf-mirror.com/Systran/faster-whisper-small/tree/main "
+          "里的文件下到 %s" % dst)
+    return False
 
 
 def funasr_models():

@@ -5,7 +5,7 @@ KB Studio — 本地个人知识库网站（零依赖，仅用 Python 标准库�
 
 启动:  python server.py           默认 http://127.0.0.1:8777
        python server.py --port 9000
-       python server.py --vault "C:/Users/ADMIN/Documents/我的知识库"
+       python server.py --vault "D:/Notes/我的知识库"      # 或 ~/Documents/MyKB
 
 数据本体就是 Obsidian vault 里的 .md 文件，本服务只做读取、索引和写入，
 不额外维护数据库——Obsidian 里改了，网站刷新即可见。
@@ -119,7 +119,12 @@ def read_deepseek_key():
         return DEEPSEEK_KEY
     try:
         cfg = json.loads((Path.home() / ".claude" / "settings.json").read_text(encoding="utf-8"))
-        return (cfg.get("env") or {}).get("ANTHROPIC_AUTH_TOKEN", "")
+        tok = (cfg.get("env") or {}).get("ANTHROPIC_AUTH_TOKEN", "") or ""
+        # 那是别人机器的凭据来源：Claude Code 的 token 长得像 sk-ant-…，
+        # 把它当 DeepSeek key 发给 base_url，等于把一套服务的凭据递给另一套。
+        if tok.startswith("sk-ant-"):
+            return ""
+        return tok
     except Exception:
         return ""
 
@@ -1237,7 +1242,12 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/card/drop":
                 return self._json(self.drop_card(body))
             if u.path == "/api/config":
-                return self._json(masked_config() if body else load_config())
+                if not body:
+                    return self._json(load_config())
+                # 这一行以前是漏的：网页点「保存」只回了一份掩码配置，
+                # 界面显示「已保存」而磁盘上连 config.json 都没生成 —— 新用户第一次填 key 就卡在这。
+                save_config(body)
+                return self._json(masked_config())
             if u.path == "/api/llm/test":
                 return self._json(self.llm_test())
             if u.path == "/api/fetch":
@@ -1817,9 +1827,12 @@ def main():
     print("🐍 解释器：%s" % sys.executable)
     if missing:
         print("❌ 缺依赖：%s" % ", ".join(missing))
-        print("   给这个解释器装上：  \"%s\" -m pip install requests beautifulsoup4"
+        print("   一步装齐（依赖 + ffmpeg + 转写模型）：\"%s\" tools/install.py"
               % sys.executable)
-        print("   或者直接用「启动知识库.bat」，它会自动挑一个装好依赖的 Python。")
+        print("   只补这两个：                  \"%s\" -m pip install requests beautifulsoup4"
+              % sys.executable)
+        print("   Windows 也可以直接双击「安装依赖.bat」。")
+        print("   如果本机有多个 Python，「启动知识库.bat」会自动挑一个装好依赖的。")
         sys.exit(1)
 
     probe = urllib.request.Request("http://127.0.0.1:%d/api/stats" % args.port)
