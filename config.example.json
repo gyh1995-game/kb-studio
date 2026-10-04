@@ -1,0 +1,10 @@
+{
+ "name": "deepseek",
+ "base_url": "https://api.deepseek.com",
+ "model": "deepseek-flash",
+ "api_key": "把你的 key 填这里 —— 先复制成 config.json 再填（config.json 不进 git，这个样例文件才进）",
+ "temperature": 0.3,
+ "maxTokens": 6000,
+ "visionOcr": true,
+ "maxOcrImages": 6
+ }

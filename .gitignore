@@ -1,0 +1,18 @@
+# 秘密与本机状态 —— 这个文件夹在笔记库内，笔记库会被 git 追踪，所以这些必须忽略
+cookies/
+config.json
+uploads/
+media/
+__pycache__/
+*.pyc
+server*.log
+
+# 本地跑出来的临时物
+tools/_out/
+.DS_Store
+Thumbs.db
+
+# 一键安装落下来的大文件：二进制和模型不进仓库
+vendor/
+models/
+.venv/

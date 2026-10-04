@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知识库 · KB Studio</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" class="logo"><path d="M4 5a2 2 0 0 1 2-2h11a1 1 0 0 1 1 1v13H6a2 2 0 0 0-2 2Zm0 16a2 2 0 0 0 2 2h13v-3H6a2 2 0 0 1-2-2Z"/></svg>
+    <span>知识库</span>
+  </div>
+
+  <div class="search">
+    <svg viewBox="0 0 24 24" class="ico"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="search" type="search" placeholder="搜索卡片、正文、标签…  (Ctrl+K)" autocomplete="off">
+  </div>
+
+  <nav class="tabs">
+    <button class="tab active" data-view="dashboard">仪表盘</button>
+    <button class="tab" data-view="cards">卡片</button>
+    <button class="tab" data-view="graph">图谱</button>
+    <button class="tab" data-view="digest">消化</button>
+  </nav>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <section class="panel">
+      <h3>概览</h3>
+      <div id="statbox" class="stats"></div>
+    </section>
+
+    <section class="panel">
+      <h3>卡片层</h3>
+      <div id="kinds" class="chips"></div>
+    </section>
+
+    <section class="panel">
+      <h3>标签</h3>
+      <div id="tagcloud" class="chips"></div>
+    </section>
+
+    <section class="panel">
+      <h3>待复习 <span id="dueCount" class="badge"></span></h3>
+      <div id="tasklist" class="tasks"></div>
+    </section>
+  </aside>
+
+  <section class="content">
+    <!-- 仪表盘 -->
+    <div id="view-dashboard" class="view active">
+      <div id="bigstats" class="bigstats"></div>
+      <div class="two-col">
+        <div class="panel">
+          <h3>最近入库</h3>
+          <div id="recent" class="list"></div>
+        </div>
+        <div class="panel">
+          <h3>今天该复习</h3>
+          <div id="due" class="list"></div>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="panel">
+          <h3>还没想清楚的问题</h3>
+          <div id="questions" class="list"></div>
+        </div>
+        <div class="panel">
+          <h3>待实践</h3>
+          <div id="practice" class="list"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>随机漫步</h3>
+        <p class="hint">每周抽 30 分钟随便刷几张卡，看到关联就补双链。</p>
+        <div id="stroll" class="stroll"></div>
+        <button id="strollBtn" class="btn">换一批</button>
+      </div>
+    </div>
+
+    <!-- 卡片 -->
+    <div id="view-cards" class="view">
+      <div class="toolbar">
+        <input id="filter" type="search" placeholder="筛选标题 / 标签…">
+        <select id="sortBy">
+          <option value="mtime">最近修改</option>
+          <option value="title">标题</option>
+        </select>
+      </div>
+      <div id="cardlist" class="cards"></div>
+    </div>
+
+    <!-- 图谱 -->
+    <div id="view-graph" class="view">
+      <div class="toolbar">
+        <span class="hint">拖动节点可重排；点击节点打开卡片。节点大小 = 连接数</span>
+        <button id="graphReset" class="btn small">重排</button>
+      </div>
+      <canvas id="graphCanvas">
+      <div id="graphTips" class="tips hidden">拖动节点排布 ｜ 拖空白平移 ｜ 滚轮缩放 ｜ 单击（不移动）打开卡片</div></canvas>
+      <div class="legend">
+        <span><i class="dot concept"></i>概念</span>
+        <span><i class="dot connection"></i>连接</span>
+        <span><i class="dot question"></i>问题</span>
+        <span><i class="dot raw"></i>原料</span>
+      </div>
+    </div>
+
+    <!-- 消化 -->
+    <div id="view-digest" class="view">
+      <div class="panel">
+        <h3>消化一条链接</h3>
+        <p class="hint">粘贴链接 → 抓正文 → AI 提炼 → <b>自动长出概念 / 连接 / 问题三层卡</b>，原料只增不改。</p>
+        <textarea id="digestUrl" rows="2" placeholder="https:// 支持 B站 / 公众号 / 知乎 / 网页…"></textarea>
+        <div class="or">或者</div>
+        <textarea id="digestText" rows="6" placeholder="直接粘贴正文（抓取不到时用这招）"></textarea>
+        <div class="row">
+          <button id="previewBtn" class="btn">先探一下</button>
+          <button id="digestBtn" class="btn primary">开始消化</button>
+          <label class="switch"><input type="checkbox" id="digestCompile" checked>自动长三层卡</label>
+          <span id="digestStatus" class="status"></span>
+        </div>
+        <p class="hint">「先探一下」只读不写：先看清这条链接能不能读、能读回多少字，再决定消化。</p>
+        <div id="previewResult" class="pv hidden"></div>
+      </div>
+
+      <div class="panel">
+        <h3>模型配置（接你自己的 API）</h3>
+        <p class="hint">OpenAI 兼容都行：DeepSeek / 通义 / 小米 MiMo / Kimi / 智谱 / OpenAI / 本地 Ollama。
+           不配也能用——那时 AI 提炼退化成规则抽取，抓取入库照常跑。</p>
+        <div class="grid2">
+          <label>接口地址<input id="cfgBase" placeholder="https://api.deepseek.com"></label>
+          <label>模型名<input id="cfgModel" placeholder="deepseek-flash"></label>
+          <label>API Key<input id="cfgKey" type="password" placeholder="只存本机 config.json，不外传"></label>
+          <label>温度<input id="cfgTemp" placeholder="0.3"></label>
+        </div>
+        <div class="row">
+          <button id="cfgSave" class="btn primary">保存</button>
+          <button id="cfgTest" class="btn">测试连通</button>
+          <span id="cfgStatus" class="status"></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Cookie 通行证（被登录墙挡住时才需要）</h3>
+        <p class="hint">浏览器<b>确认已登录</b>该平台 → F12 → Network → 刷新 → 点第一个请求 →
+           Request Headers 里整串复制 <code>Cookie:</code> 后面的值贴进来。<br>
+           支持四种粘法：请求头整串 / 折行粘贴 / <code>cookies.txt</code>(Netscape) / 插件 JSON 导出。<br>
+           只写进本机 <code>cookies/</code>（已在 .gitignore 里），不进笔记、不上传、接口只回元信息。</p>
+        <div class="grid2">
+          <label>站点<select id="ckSite">
+            <option value="zhihu">知乎</option><option value="douyin">抖音</option>
+            <option value="xiaohongshu">小红书</option><option value="instagram">Instagram</option>
+            <option value="facebook">Facebook</option><option value="bilibili">B站</option>
+            <option value="weixin">公众号</option>
+          </select></label>
+          <label>已有 cookie<div id="ckList" class="cklist">（无）</div></label>
+        </div>
+        <textarea id="ckVal" rows="3" placeholder="z_c0=...; d_c0=...; 整串粘进来（不用自己加分号）"></textarea>
+        <label class="ck-ua">同一请求里的 <code>User-Agent</code>（可选，但强烈建议填）
+          <input id="ckUa" type="text" placeholder="Chrome 版本要和浏览器一致，否则指纹自相矛盾会被拒">
+        </label>
+        <div class="row">
+          <button id="ckSave" class="btn primary">保存</button>
+          <button id="ckCheck" class="btn">体检这份 cookie</button>
+          <button id="ckDrop" class="btn">清除所选站点</button>
+          <span id="ckStatus" class="status"></span>
+        </div>
+        <div id="ckCheckOut" class="pv hidden"></div>
+      </div>
+
+      <div class="panel">
+        <h3>上传文件入库</h3>
+        <div id="drop" class="drop">
+          <input type="file" id="upFile" class="drop-input">
+          <div class="drop-face">
+            <div class="drop-icon">↥</div>
+            <div class="drop-tip"><b>把文件拖进来</b>，或点击选择</div>
+            <div class="drop-sub">md · txt · html · pdf · docx · 图片 · 音视频（音视频走本地 faster-whisper 转写）</div>
+          </div>
+        </div>
+        <div class="row">
+          <span id="upName" class="status"></span>
+          <button id="upBtn" class="btn primary" disabled>读取并消化</button>
+          <progress id="upBar" max="100" value="0" class="hidden"></progress>
+          <span id="upStatus" class="status"></span>
+        </div>
+      </div>
+      <div id="digestResult" class="panel hidden">
+        <h3>消化结果</h3>
+        <div id="digestCards" class="newcards"></div>
+        <div id="digestOut" class="md"></div>
+      </div>
+    </div>
+
+    <!-- 阅读 -->
+    <div id="view-read" class="view">
+      <button id="backBtn" class="btn small">← 返回</button>
+      <div id="readMeta" class="readmeta"></div>
+      <div class="read-grid">
+        <div class="read-main">
+          <div class="read-tools">
+            <button id="rdEdit" class="btn small">改写</button>
+            <button id="rdRedo" class="btn small hidden">按原文重新生成</button>
+            <button id="rdSync" class="btn small hidden" title="只读消化稿重长卡片，不调用模型、不产生 API 费用">只同步卡片（不花钱）</button>
+            <button id="rdPractice" class="btn small hidden" title="标成「待实践」= 这条我打算真的去用；再点一下取消">标为待实践</button>
+            <button id="rdDel" class="btn small danger">删除</button>
+            <span class="seg" id="rdWidth" title="正文宽度">
+              <button data-w="1" class="on">标准</button><button data-w="2">宽</button><button data-w="3">满</button>
+            </span>
+            <span id="rdStatus" class="status"></span>
+          </div>
+          <div id="rdPlayer"></div>
+          <textarea id="rdText" class="hidden" rows="18" spellcheck="false"></textarea>
+          <div id="readBody" class="md w1"></div>
+        </div>
+        <aside class="read-rail">
+      <div class="panel">
+        <h3>我的批注</h3>
+        <p class="hint">读完随手写，不用管格式。我会按你的理解归位到概念 / 连接 / 问题卡，
+           原文批注也留在这张卡上。</p>
+        <textarea id="annoText" rows="3" placeholder="我读到这里的想法 / 没看懂的地方 / 想验证的假设…"></textarea>
+        <div class="row"><button id="annoBtn" class="btn primary">存进这张卡</button>
+          <span id="annoStatus" class="status"></span></div>
+      </div>
+      <div class="panel">
+        <h3>自己补一张卡</h3>
+        <p class="hint">模型漏掉的想法你自己写进来，出处自动挂到当前这份原料上。
+           名字要写成一句「离开这篇内容还成立」的主张。</p>
+        <div class="row">
+          <select id="mcKind" class="small">
+            <option value="concept">概念</option>
+            <option value="connection">连接</option>
+            <option value="question">疑问</option>
+          </select>
+          <input id="mcName" type="text" placeholder="卡名（一句主张）">
+        </div>
+        <textarea id="mcText" rows="3" placeholder="卡片正文。连接卡要写明接的是库里哪张卡，如 [[已有卡名]]。"></textarea>
+        <input id="mcUse" type="text" placeholder="用在哪（概念卡填这个，别的可空）">
+        <div class="row"><button id="mcAdd" class="btn">建这张卡</button>
+          <span id="mcStatus" class="status"></span></div>
+        <p class="hint" id="mcSource"></p>
+      </div>
+      <div class="panel">
+        <h3>本篇待复习</h3>
+        <div id="readTasks" class="list"></div>
+      </div>
+      <div class="panel">
+        <h3>反向链接</h3>
+        <div id="backlinks" class="list"></div>
+      </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>

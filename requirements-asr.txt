@@ -1,0 +1,11 @@
+# 中文语音转写的正引擎（可选，但强烈建议装）
+# 实测同一条 2 分钟中文视频：faster-whisper small 35 秒且「爆款/场景/信息流/带货」全听成谐音；
+# FunASR 7 秒且全对。不装也能跑 —— 会自动退回 faster-whisper。
+#
+# torch 很大（CPU 版约 200MB）。Windows 上建议按官方索引装 CPU 版：
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-asr.txt
+-r requirements.txt
+funasr>=1.1
+kaldi-native-fbank>=1.18    # FunASR 缺这个 fbank 后端会直接报错（2026-10-03 踩过）
+modelscope>=1.20            # 从 ModelScope 拉 paraformer / vad / punc 模型（约 1.1GB 缓存）

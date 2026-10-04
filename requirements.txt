@@ -1,0 +1,6 @@
+# 核心依赖（抓取 / 解析 / 网页工具本身）—— 纯 Python + 轻量二进制，几十 MB
+beautifulsoup4>=4.12
+requests>=2.31
+pymupdf>=1.24          # PDF 导入
+pillow>=10             # 图片处理
+faster-whisper>=1.1    # 语音转写的兜底引擎（CPU int8，无需 torch）
