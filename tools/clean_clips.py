@@ -20,7 +20,7 @@ from pathlib import Path, PurePosixPath
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
-import server  # noqa: E402  用生产同一套 render_card_section / strip_card_sections
+import server  # noqa: E402  用生产同一套 strip_card_sections / _fm_set / find_card_file
 
 VAULT = Path(server.VAULT)
 
@@ -99,15 +99,28 @@ def collect_card_links(s):
 def clean_one(path):
     s = old = path.read_text(encoding="utf-8")
     pairs, ghosts = collect_card_links(s)
-    s = server.strip_card_sections(s)            # 1) 两份都删，稍后只写一份
+    s = server.strip_card_sections(s)            # 1) 卡列表整节删掉（改由前端按 from_raw 现算）
     for pat, rep in HEAD_FIX + LINE_FIX:          # 2) 中性化 / 删过程日志
         s = pat.sub(rep, s)
     s = "\n".join(l for l in s.splitlines() if not LOG_LINE.match(l))
-    made = [(k, n, "", "new") for k, n in pairs]
-    if made:                                     # 3) 文末唯一一份
-        s = s.rstrip("\n") + "\n\n" + server.render_card_section(made)
     s = re.sub(r"\n{3,}", "\n\n", s).rstrip("\n") + "\n"
     return old, s, ghosts, pairs
+
+
+def backfill_from_raw(pairs, clip_rel):
+    """把旧卡列表里那些卡补上 from_raw 字段 —— 侧栏「这张原料长成的卡」只认这一个来源。"""
+    done = []
+    for _kind, name in pairs:
+        rel = server.find_card_file(name)
+        if not rel:
+            continue
+        p = VAULT / rel
+        s = p.read_text(encoding="utf-8")
+        if re.search(r"^from_raw:", s, re.M):
+            continue
+        p.write_text(server._fm_set(s, {"from_raw": clip_rel}), encoding="utf-8")
+        done.append(rel)
+    return done
 
 
 def main():
@@ -145,7 +158,9 @@ def main():
             trash.mkdir(parents=True, exist_ok=True)
             (trash / ("%s.pre-clean-%s.md" % (p.stem, ts))).write_text(old, encoding="utf-8")
             p.write_text(new, encoding="utf-8")
-            print("   [已写，旧版在 inbox/trash/%s.pre-clean-%s.md]" % (p.stem, ts))
+            filled = backfill_from_raw(pairs, str(p.relative_to(VAULT)).replace("\\", "/"))
+            print("   [已写，旧版在 inbox/trash/%s.pre-clean-%s.md]，补 from_raw %d 张"
+                  % (p.stem, ts, len(filled)))
     print("\n%d 份要动 / 共 %d 份%s" % (changed, len(files),
                                   "" if args.apply else "（演练，没写盘）"))
     return 0

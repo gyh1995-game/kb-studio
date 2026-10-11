@@ -141,8 +141,9 @@ def main():
                                      "text": PROSE, "compile": True})
         check("消化成功", d.get("ok"), d.get("error", ""))
         md = d.get("digest", "")
-        need = ["核心观点", "可执行清单", "概念候选", "连接候选", "我的疑问", "值得记住的原话", "下一步"]
-        check("7 段骨架", all(k in md for k in need), "缺:" + ",".join(k for k in need if k not in md))
+        need = ["核心观点", "可执行清单", "概念候选", "连接候选", "我的疑问", "值得记住的原话",
+                "下一步", "主题标签"]
+        check("8 段骨架", all(k in md for k in need), "缺:" + ",".join(k for k in need if k not in md))
         cards = d.get("cards", [])
         kinds = {c["kind"] for c in cards}
         check("自动长三层卡", len(cards) >= 3 and {"concept", "question"} <= kinds,
@@ -152,14 +153,25 @@ def main():
             card = api.get("/api/card?path=" + urllib.parse.quote(c0["path"], safe=""))
             check("新卡可读回", c0["name"] in (card.get("body") or "") + str(card.get("frontmatter")))
             check("新卡回指原料", ("[[%s]]" % d["title"]) in (card.get("body") or ""))
+            check("卡片带 from_raw", (card.get("frontmatter") or {}).get("from_raw") == d["clip"],
+                  (card.get("frontmatter") or {}).get("from_raw", "（缺）"))
+            check("卡片有类型和预估", (card.get("frontmatter") or {}).get("media_type") and
+                  int((card.get("frontmatter") or {}).get("est_min") or 0) > 0)
         clip = api.get("/api/card?path=" + urllib.parse.quote(d["clip"], safe=""))
-        check("原料记录了新卡", server.CARD_SECTION in (clip.get("body") or ""))
-        check("卡列表只有一份", (clip.get("body") or "").count("长成的卡") == 1)
+        cb = clip.get("body") or ""
+        cfm = clip.get("frontmatter") or {}
+        check("原料正文里没有卡列表（改由 from_raw 算）", server.CARD_SECTION not in cb)
+        check("原料有类型 / 预估 / 未读", cfm.get("media_type") and int(cfm.get("est_min") or 0) > 0
+              and cfm.get("status") in server.STATUSES,
+              "%s %s %s" % (cfm.get("media_type"), cfm.get("est_min"), cfm.get("status")))
 
         # ---- 4 疑问进队 + 勾选/撤销
         tk = api.get("/api/tasks")["tasks"]
-        mine = [t for t in tk if t.get("card") == d["clip"]]
+        mine = [t for t in tk if t.get("raw") == d["clip"]]
         check("疑问进待复习", len(mine) >= 3, "%d 条挂在这张原料上" % len(mine))
+        check("条目带类型 / 预估 / 来源", all(
+            t.get("media_type") and int(t.get("est_min") or 0) > 0 and t.get("platform")
+            for t in mine), "")
         if mine:
             t0 = mine[0]["title"]
             api.post("/api/task/done", {"title": t0})

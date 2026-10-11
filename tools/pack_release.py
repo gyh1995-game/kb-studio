@@ -23,11 +23,11 @@ HERE = Path(__file__).resolve().parents[1]
 OUT_DEFAULT = Path(tempfile.gettempdir()) / "kb-studio-release"
 
 INCLUDE_FILES = ["server.py", "fetchers.py", "requirements.txt", "requirements-asr.txt",
-                 "config.example.json", ".gitignore", "README.md",
+                 "config.example.json", ".gitignore", "README.md", "AGENTS.md",
                  "启动知识库.bat", "安装依赖.bat"]
-INCLUDE_DIRS = ["static", "skill", "scripts", "tools", "templates", "docs"]
+INCLUDE_DIRS = ["static", "skill", "scripts", "tools", "templates", "docs", "extract-skill"]
 NEVER = {"__pycache__", ".venv", "cookies", "media", "uploads", "vendor", "models",
-         ".obsidian", "node_modules"}
+         ".obsidian", "node_modules", "out", "shots-v2", "shots-v3"}
 
 # 凭据形状：值本身长这样才算，字段名出现不算（代码里到处是 "api_key"）
 SECRET_PATTERNS = [
@@ -43,8 +43,8 @@ PERSONAL = [
     # 拼接而不是直接写字面量：否则这个文件自己就会命中自己的检查
     (re.compile("网站" + "简单整理"), "原作者的个人目录名"),
 ]
-# 包里允许出现的 .md：只有文档和模板，出现别的一律视为知识库内容泄漏
-MD_OK = re.compile(r"^(README\.md|docs/|skill/|templates/)")
+# 包里允许出现的 .md：只有文档、模板和那份独立 skill 的说明，出现别的一律视为知识库内容泄漏
+MD_OK = re.compile(r"^(README\.md|AGENTS\.md|docs/|skill/|templates/|extract-skill/)")
 
 
 def gather():

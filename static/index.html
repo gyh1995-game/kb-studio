@@ -1,266 +1,532 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-suit="snow">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>知识库 · KB Studio</title>
+<title>知识库 · KB Atelier</title>
+<link rel="stylesheet" href="/skins.css">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
-<header class="topbar">
-  <div class="brand">
-    <svg viewBox="0 0 24 24" class="logo"><path d="M4 5a2 2 0 0 1 2-2h11a1 1 0 0 1 1 1v13H6a2 2 0 0 0-2 2Zm0 16a2 2 0 0 0 2 2h13v-3H6a2 2 0 0 1-2-2Z"/></svg>
-    <span>知识库</span>
+<!-- 图标精灵：内联 SVG，不引外链字体图标 -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h11a1 1 0 0 1 1 1v13H6a2 2 0 0 0-2 2Z"/><path d="M4 19a2 2 0 0 0 2 2h12"/><path d="M8 7h6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+  <symbol id="i-hanger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8a2.4 2.4 0 1 1 2.4-2.4"/><path d="M12 8v2.2L4.4 16a1.6 1.6 0 0 0 .9 3h13.4a1.6 1.6 0 0 0 .9-3L12 10.2"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3 2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M10 13.5a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7L11.4 6.4"/><path d="M14 10.5a4 4 0 0 0-5.7 0L5.5 13.3a4 4 0 0 0 5.7 5.7l1.4-1.4"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12V4.5H11l9 9-7.5 7.5z"/><circle cx="7.6" cy="8.4" r="1.3"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8.5 4.6L12 12.2 3.5 7.6z"/><path d="m4.6 12.4 7.4 4 7.4-4"/><path d="m4.6 16.6 7.4 4 7.4-4"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 3.2v4M12 16.8v4M3.2 12h4M16.8 12h4M6 6l2.6 2.6M15.4 15.4 18 18M18 6l-2.6 2.6M8.6 15.4 6 18"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-graph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="6" cy="7" r="2.4"/><circle cx="18" cy="6.4" r="2.1"/><circle cx="12" cy="17.4" r="2.6"/><path d="m7.9 8.6 2.6 6.4M16.6 8.2l-3.2 7"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.4 3.4v5L4.6 17a2.4 2.4 0 0 0 2.1 3.6h10.6A2.4 2.4 0 0 0 19.4 17l-4.8-8.6v-5"/><path d="M8.4 3.4h7.2M6.8 14.4h10.4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2.6 12S6 5.8 12 5.8 21.4 12 21.4 12 18 18.2 12 18.2 2.6 12 2.6 12Z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16.4V4.6"/><path d="m7.6 9 4.4-4.4L16.4 9"/><path d="M4.4 15v3.2a1.8 1.8 0 0 0 1.8 1.8h11.6a1.8 1.8 0 0 0 1.8-1.8V15"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="8" cy="12" r="4"/><path d="M12 12h8.4M17 12v3.4M20.4 12v2.4"/></symbol>
+  <symbol id="i-source" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.6h12v10.8a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z"/><path d="M9.6 21.4v-3M14.4 21.4v-3"/><path d="M9.4 8.6h5.2"/></symbol>
+  <symbol id="i-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5 15.2 5.3l3.5 3.5L7.5 20H4z"/><path d="M13 7.5 16.5 11"/><path d="M4 21.4h9"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.6h14v10.8l-4.6 4H5z"/><path d="M19 15.4h-4.6v4"/><path d="M8.4 9h7M8.4 12h4"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4.6h8v4.2a4 4 0 0 1-8 0z"/><path d="M8 5.6H5.4a3 3 0 0 0 3 3M16 5.6h2.6a3 3 0 0 1-3 3"/><path d="M12 12.8v3.4M8.6 19.4h6.8"/></symbol>
+  <symbol id="i-q" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.6"/><path d="M9.8 9.6a2.3 2.3 0 1 1 3 2.2c-.7.3-1 .8-1 1.6"/><path d="M11.8 16.6h.02"/></symbol>
+</svg>
+
+<!-- 影棚氛围 -->
+<div class="sky"></div>
+<div class="floor"></div>
+<div class="spot"></div>
+<div class="grain"></div>
+<div class="vignette"></div>
+
+<header class="topbar" id="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark"><svg><use href="#i-book"/></svg></span>
+      <span class="brand-txt">
+        <b>知识库</b>
+        <span class="brand-live"><i class="pulse"></i><span id="liveTag">obsidian · 本机</span></span>
+      </span>
+    </div>
+
+    <button class="omni" id="omniBtn">
+      <svg><use href="#i-search"/></svg>
+      <span>搜卡片、正文、标签…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+
+    <nav class="nav" id="nav" aria-label="视图">
+      <button data-view="dashboard" aria-current="true">仪表盘</button>
+      <button data-view="cards">卡片</button>
+      <button data-view="graph">图谱</button>
+      <button data-view="digest">消化</button>
+    </nav>
+
+    <button class="suit-btn" id="wardrobeBtn" title="打开衣柜更换皮肤">
+      <svg><use href="#i-hanger"/></svg>
+      <span class="suit-swatches">
+        <i style="background:var(--accent)"></i><i style="background:var(--wood)"></i><i style="background:var(--blush)"></i>
+      </span>
+      <span id="suitName">雪山白</span>
+    </button>
+
+    <button class="act act--primary" id="newCardBtn">
+      <svg><use href="#i-pen"/></svg>新建卡片
+    </button>
   </div>
-
-  <div class="search">
-    <svg viewBox="0 0 24 24" class="ico"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input id="search" type="search" placeholder="搜索卡片、正文、标签…  (Ctrl+K)" autocomplete="off">
-  </div>
-
-  <nav class="tabs">
-    <button class="tab active" data-view="dashboard">仪表盘</button>
-    <button class="tab" data-view="cards">卡片</button>
-    <button class="tab" data-view="graph">图谱</button>
-    <button class="tab" data-view="digest">消化</button>
-  </nav>
 </header>
 
-<main class="layout">
-  <aside class="sidebar">
-    <section class="panel">
-      <h3>概览</h3>
-      <div id="statbox" class="stats"></div>
-    </section>
+<main class="wrap">
 
-    <section class="panel">
-      <h3>卡片层</h3>
-      <div id="kinds" class="chips"></div>
-    </section>
+  <!-- ============================ 仪表盘 ============================ -->
+  <section class="view on" id="view-dashboard">
 
-    <section class="panel">
-      <h3>标签</h3>
-      <div id="tagcloud" class="chips"></div>
-    </section>
-
-    <section class="panel">
-      <h3>待复习 <span id="dueCount" class="badge"></span></h3>
-      <div id="tasklist" class="tasks"></div>
-    </section>
-  </aside>
-
-  <section class="content">
-    <!-- 仪表盘 -->
-    <div id="view-dashboard" class="view active">
-      <div id="bigstats" class="bigstats"></div>
-      <div class="two-col">
-        <div class="panel">
-          <h3>最近入库</h3>
-          <div id="recent" class="list"></div>
+    <div class="hero">
+      <div class="hero-copy glass rv" style="--i:0">
+        <span class="eyebrow"><i class="dot"></i><b id="heroEyebrow">studio · 今日</b></span>
+        <h1 id="heroTitle"></h1>
+        <p class="hero-sub" id="heroSub"></p>
+        <div class="balloon">
+          <span class="kind-dot" style="background:var(--wood);margin-top:6px"></span>
+          <div style="min-width:0">
+            <p id="ipLine"></p>
+          </div>
         </div>
-        <div class="panel">
-          <h3>今天该复习</h3>
-          <div id="due" class="list"></div>
+        <div class="dock">
+          <button class="act" data-goto="digest"><svg><use href="#i-flask"/></svg>提交一条链接</button>
+          <button class="act act--wood" id="focusReview"><svg><use href="#i-clock"/></svg>今日复习</button>
+          <button class="act" data-goto="graph"><svg><use href="#i-graph"/></svg>查看图谱</button>
+          <button class="act" id="strollBtn"><svg><use href="#i-spark"/></svg>随机漫步</button>
+          <button class="act" id="sumDay" title="让她按本机记录 + 卡片正文，写一份今天的总结"><svg><use href="#i-pen"/></svg>今日总结</button>
+          <button class="act" id="sumWeek" title="让她写一份这一周的总结"><svg><use href="#i-pen"/></svg>本周总结</button>
         </div>
       </div>
-      <div class="two-col">
-        <div class="panel">
-          <h3>还没想清楚的问题</h3>
-          <div id="questions" class="list"></div>
-        </div>
-        <div class="panel">
-          <h3>待实践</h3>
-          <div id="practice" class="list"></div>
-        </div>
-      </div>
-      <div class="panel">
-        <h3>随机漫步</h3>
-        <p class="hint">每周抽 30 分钟随便刷几张卡，看到关联就补双链。</p>
-        <div id="stroll" class="stroll"></div>
-        <button id="strollBtn" class="btn">换一批</button>
+
+      <div class="stage glass rv" id="ipStage" style="--i:1">
+        <span class="stage-tag" id="stageTag">IP · rig</span>
+        <span class="stage-mood" id="ipMood">● 视线跟随</span>
+        <div class="stage-ring"></div>
+        <div class="stage-floor"></div>
+        <svg id="ip" viewBox="0 0 200 260" aria-label="知识库 IP 形象"></svg>
       </div>
     </div>
 
-    <!-- 卡片 -->
-    <div id="view-cards" class="view">
-      <div class="toolbar">
-        <input id="filter" type="search" placeholder="筛选标题 / 标签…">
-        <select id="sortBy">
-          <option value="mtime">最近修改</option>
-          <option value="title">标题</option>
-        </select>
+    <!-- 层级：原料在最上面，它是别的一切的源头 -->
+    <div class="ladder" id="ladder">
+      <div class="ladder-note">
+        <span class="lbl">STACK · 分层（整页只有这一处放分层计数）</span>
+        <p id="ladderCopy"></p>
+        <p class="fb">如对分层口径或字段含义有异议，可添加微信 <b>xwgyaha</b> 反馈，注明「知识库工作台」。</p>
       </div>
-      <div id="cardlist" class="cards"></div>
+      <div class="tiers" id="tiers"></div>
     </div>
 
-    <!-- 图谱 -->
-    <div id="view-graph" class="view">
-      <div class="toolbar">
-        <span class="hint">拖动节点可重排；点击节点打开卡片。节点大小 = 连接数</span>
-        <button id="graphReset" class="btn small">重排</button>
+    <!-- 学习记录：只放本机行为数据，库内计数不在这儿重复 -->
+    <section class="record glass rv" style="--i:2">
+      <header><h3>学习记录</h3><button class="lbl" id="clearReadLog"
+        style="font:inherit;cursor:pointer;border:0;background:none;color:var(--accent)">清空本机记录</button></header>
+      <div class="rec-grid" id="recGrid"></div>
+      <p class="tip" id="recordNote"></p>
+    </section>
+
+    <div class="work">
+      <aside class="rail">
+        <section class="panel glass rv" style="--i:1">
+          <header><h3>核心标签</h3><button class="lbl" id="tagMore" style="font:inherit;cursor:pointer;border:0;background:none;color:var(--accent)">全部标签 →</button></header>
+          <div class="chips" id="tags"></div>
+        </section>
+        <section class="panel glass rv" style="--i:2">
+          <header><h3>近期已完成</h3><span class="lbl" id="doneCnt">done</span></header>
+          <div class="memo" id="donelist"></div>
+        </section>
+      </aside>
+
+      <div class="canvas">
+        <section class="quad glass rv" style="--i:0">
+          <header><span class="kind-dot" style="background:var(--ink-3)"></span><h2>最近入库的原料</h2><span class="spacer"></span><span class="cnt" id="recentCnt"></span></header>
+          <div class="rows" id="recent"></div>
+          <footer>原料只增不改，卡片会长大 · <a data-kind="raw">只看原料</a> · <a data-goto="cards">全部卡片</a></footer>
+        </section>
+
+        <section class="quad glass rv" style="--i:1" id="reviewSection">
+          <header><span class="kind-dot" style="background:var(--wood)"></span><h2>今天该复习</h2><span class="spacer"></span><span class="cnt" id="dueCnt"></span></header>
+          <div class="due" id="due"></div>
+          <div class="pagenav" id="dueNav" hidden></div>
+          <footer id="dueFoot">完成一条即从本列移出，并计入右侧「近期已完成」。</footer>
+        </section>
+
+        <section class="quad glass rv" style="--i:2">
+          <header><span class="kind-dot" style="background:var(--accent)"></span><h2>还没长实的概念</h2><span class="spacer"></span><span class="cnt" id="thinCnt"></span></header>
+          <div class="rows" id="thin"></div>
+          <footer><span id="thinRule"></span> · <a data-glossary="1">什么是双链？</a></footer>
+        </section>
+
+        <section class="quad glass rv" style="--i:3">
+          <header><span class="kind-dot" style="background:var(--blush)"></span><h2>还没想清楚的问题</h2><span class="spacer"></span><span class="cnt" id="qCnt"></span></header>
+          <div class="rows" id="qlist"></div>
+          <footer>问题卡 = 读完仍然没答上的那一条 · <a data-kind="question">只看问题卡</a></footer>
+        </section>
+
+        <section class="quad glass wide seen">
+          <header><span class="kind-dot" style="background:var(--wood)"></span><h2>随机漫步</h2><span class="spacer"></span><span class="lbl">抽三张，看到关联就补双链</span></header>
+          <div class="grid-cards" id="stroll"></div>
+        </section>
       </div>
-      <canvas id="graphCanvas">
-      <div id="graphTips" class="tips hidden">拖动节点排布 ｜ 拖空白平移 ｜ 滚轮缩放 ｜ 单击（不移动）打开卡片</div></canvas>
+    </div>
+  </section>
+
+  <!-- ============================ 卡片 ============================ -->
+  <section class="view" id="view-cards">
+    <div class="toolbar">
+      <label class="field"><svg><use href="#i-search"/></svg><input id="filter" placeholder="筛选标题 / 正文 / 标签…"></label>
+      <div class="chips" id="kindFilter"></div>
+      <span style="flex:1"></span>
+      <span class="sel" id="sortBySel" data-value="mtime">
+        <button class="sel-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <svg><use href="#i-layers"/></svg><span class="sel-cur">最近修改</span><i>▾</i></button>
+        <div class="sel-pop" role="listbox">
+          <button role="option" data-v="mtime" class="on">最近修改</button>
+          <button role="option" data-v="chars">正文最长</button>
+          <button role="option" data-v="links">关联最多</button>
+          <button role="option" data-v="status">按状态</button>
+          <button role="option" data-v="title">标题</button>
+        </div>
+      </span>
+      <select id="sortBy" hidden>
+        <option value="mtime">最近修改</option><option value="chars">正文最长</option>
+        <option value="links">关联最多</option><option value="status">按状态</option><option value="title">标题</option>
+      </select>
+      <span class="lbl" id="browseCnt"></span>
+    </div>
+    <div class="fbar" id="fbar" hidden></div>
+    <div class="browse">
+      <aside class="rail">
+        <section class="panel glass">
+          <header><h3>状态</h3></header>
+          <div class="chips facet" id="statusFilter"></div>
+        </section>
+        <section class="panel glass">
+          <header><h3>来源平台</h3></header>
+          <div class="chips facet" id="platforms"></div>
+        </section>
+        <section class="panel glass" id="tagPanel">
+          <header><h3>标签</h3><button class="mode-toggle" id="tagMode">多选</button></header>
+          <label class="field tight"><svg><use href="#i-search"/></svg><input id="tagSearch" placeholder="搜标签…"></label>
+          <div class="chips scroll facet" id="allTags"></div>
+        </section>
+      </aside>
+      <div class="grid-cards" id="cardGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============================ 图谱 ============================ -->
+  <section class="view" id="view-graph">
+    <div class="toolbar">
+      <span class="lbl" id="graphHelp">空白处拖动 = 转动整张图 · 点一个点 = 只留下与它相连的线和点 · 聚焦后再点任意亮点 = 打开那张卡 · 滚轮缩放</span>
+      <span style="flex:1"></span>
+      <button class="act" id="graphSpin"><svg><use href="#i-graph"/></svg>自动旋转</button>
+      <button class="act" id="graphFit"><svg><use href="#i-layers"/></svg>复位视图</button>
+    </div>
+    <div class="graph-shell glass">
+      <canvas id="graph"></canvas>
       <div class="legend">
-        <span><i class="dot concept"></i>概念</span>
-        <span><i class="dot connection"></i>连接</span>
-        <span><i class="dot question"></i>问题</span>
-        <span><i class="dot raw"></i>原料</span>
+        <span><i style="background:var(--accent)"></i>概念</span>
+        <span><i style="background:var(--wood)"></i>连接</span>
+        <span><i style="background:var(--blush)"></i>问题</span>
+        <span><i style="background:var(--ink-3)"></i>原料</span>
+      </div>
+      <span class="graph-hint" id="graphStat"></span>
+      <div class="gfocus" id="gfocus" hidden>
+        <div class="gf-top"><span class="kind-dot"></span><b id="gfTitle"></b></div>
+        <div class="gf-meta" id="gfMeta"></div>
+        <div class="dock">
+          <button class="act act--primary" id="gfOpen"><svg><use href="#i-arrow"/></svg>打开这张</button>
+          <button class="act" id="gfClear"><svg><use href="#i-close"/></svg>取消聚焦</button>
+        </div>
       </div>
     </div>
+  </section>
 
-    <!-- 消化 -->
-    <div id="view-digest" class="view">
-      <div class="panel">
-        <h3>消化一条链接</h3>
-        <p class="hint">粘贴链接 → 抓正文 → AI 提炼 → <b>自动长出概念 / 连接 / 问题三层卡</b>，原料只增不改。</p>
-        <textarea id="digestUrl" rows="2" placeholder="https:// 支持 B站 / 公众号 / 知乎 / 网页…"></textarea>
-        <div class="or">或者</div>
-        <textarea id="digestText" rows="6" placeholder="直接粘贴正文（抓取不到时用这招）"></textarea>
-        <div class="row">
-          <button id="previewBtn" class="btn">先探一下</button>
-          <button id="digestBtn" class="btn primary">开始消化</button>
-          <label class="switch"><input type="checkbox" id="digestCompile" checked>自动长三层卡</label>
-          <span id="digestStatus" class="status"></span>
-        </div>
-        <p class="hint">「先探一下」只读不写：先看清这条链接能不能读、能读回多少字，再决定消化。</p>
-        <div id="previewResult" class="pv hidden"></div>
-      </div>
-
-      <div class="panel">
-        <h3>模型配置（接你自己的 API）</h3>
-        <p class="hint">OpenAI 兼容都行：DeepSeek / 通义 / 小米 MiMo / Kimi / 智谱 / OpenAI / 本地 Ollama。
-           不配也能用——那时 AI 提炼退化成规则抽取，抓取入库照常跑。</p>
-        <div class="grid2">
-          <label>接口地址<input id="cfgBase" placeholder="https://api.deepseek.com"></label>
-          <label>模型名<input id="cfgModel" placeholder="deepseek-flash"></label>
-          <label>API Key<input id="cfgKey" type="password" placeholder="只存本机 config.json，不外传"></label>
-          <label>温度<input id="cfgTemp" placeholder="0.3"></label>
-        </div>
-        <div class="row">
-          <button id="cfgSave" class="btn primary">保存</button>
-          <button id="cfgTest" class="btn">测试连通</button>
-          <span id="cfgStatus" class="status"></span>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3>Cookie 通行证（被登录墙挡住时才需要）</h3>
-        <p class="hint">浏览器<b>确认已登录</b>该平台 → F12 → Network → 刷新 → 点第一个请求 →
-           Request Headers 里整串复制 <code>Cookie:</code> 后面的值贴进来。<br>
-           支持四种粘法：请求头整串 / 折行粘贴 / <code>cookies.txt</code>(Netscape) / 插件 JSON 导出。<br>
-           只写进本机 <code>cookies/</code>（已在 .gitignore 里），不进笔记、不上传、接口只回元信息。</p>
-        <div class="grid2">
-          <label>站点<select id="ckSite">
-            <option value="zhihu">知乎</option><option value="douyin">抖音</option>
-            <option value="xiaohongshu">小红书</option><option value="instagram">Instagram</option>
-            <option value="facebook">Facebook</option><option value="bilibili">B站</option>
-            <option value="weixin">公众号</option>
-          </select></label>
-          <label>已有 cookie<div id="ckList" class="cklist">（无）</div></label>
-        </div>
-        <textarea id="ckVal" rows="3" placeholder="z_c0=...; d_c0=...; 整串粘进来（不用自己加分号）"></textarea>
-        <label class="ck-ua">同一请求里的 <code>User-Agent</code>（可选，但强烈建议填）
-          <input id="ckUa" type="text" placeholder="Chrome 版本要和浏览器一致，否则指纹自相矛盾会被拒">
-        </label>
-        <div class="row">
-          <button id="ckSave" class="btn primary">保存</button>
-          <button id="ckCheck" class="btn">体检这份 cookie</button>
-          <button id="ckDrop" class="btn">清除所选站点</button>
-          <span id="ckStatus" class="status"></span>
-        </div>
-        <div id="ckCheckOut" class="pv hidden"></div>
-      </div>
-
-      <div class="panel">
-        <h3>上传文件入库</h3>
-        <div id="drop" class="drop">
-          <input type="file" id="upFile" class="drop-input">
-          <div class="drop-face">
-            <div class="drop-icon">↥</div>
-            <div class="drop-tip"><b>把文件拖进来</b>，或点击选择</div>
-            <div class="drop-sub">md · txt · html · pdf · docx · 图片 · 音视频（音视频走本地 faster-whisper 转写）</div>
+  <!-- ============================ 消化 ============================ -->
+  <section class="view" id="view-digest">
+    <div class="toolbar"><span class="lbl">一条链接 → 原料 → 概念 / 连接 / 问题三层卡 · 全程走本机服务，不经过第三方</span></div>
+    <div class="flow">
+      <div class="flow-main">
+        <section class="panel glass">
+          <header><h3>提交一条链接</h3><span class="lbl">digest</span></header>
+          <div class="pipe"><i></i></div>
+          <div class="form-row"><span>链接</span><textarea id="digestUrl" rows="2" placeholder="https:// 抖音 / 小红书 / 知乎 / B站 / 公众号 / 网页…"></textarea></div>
+          <div class="form-row"><span>或直接粘贴正文</span><textarea id="digestText" rows="5" placeholder="抓取不到时使用这一项"></textarea></div>
+          <div class="dock">
+            <button class="act" id="previewBtn"><svg><use href="#i-eye"/></svg>先探测</button>
+            <button class="act act--primary" id="digestBtn"><svg><use href="#i-flask"/></svg>开始消化</button>
+            <label class="switch"><input type="checkbox" id="digestCompile" checked>自动长三层卡</label>
+            <span class="lbl" id="digestStatus"></span>
           </div>
-        </div>
-        <div class="row">
-          <span id="upName" class="status"></span>
-          <button id="upBtn" class="btn primary" disabled>读取并消化</button>
-          <progress id="upBar" max="100" value="0" class="hidden"></progress>
-          <span id="upStatus" class="status"></span>
-        </div>
-      </div>
-      <div id="digestResult" class="panel hidden">
-        <h3>消化结果</h3>
-        <div id="digestCards" class="newcards"></div>
-        <div id="digestOut" class="md"></div>
-      </div>
-    </div>
+          <div class="prog" id="digestProg" hidden>
+            <div class="prog-bar"><i id="progFill"></i></div>
+            <div class="prog-stages" id="progStages"></div>
+            <p class="tip" id="progTip"></p>
+          </div>
+          <p class="tip">「先探测」只读不写：先确认这条链接能不能读、能读回多少字，再决定是否消耗模型额度。</p>
+          <div id="previewResult" class="pvbox" hidden></div>
+        </section>
 
-    <!-- 阅读 -->
-    <div id="view-read" class="view">
-      <button id="backBtn" class="btn small">← 返回</button>
-      <div id="readMeta" class="readmeta"></div>
-      <div class="read-grid">
-        <div class="read-main">
-          <div class="read-tools">
-            <button id="rdEdit" class="btn small">改写</button>
-            <button id="rdRedo" class="btn small hidden">按原文重新生成</button>
-            <button id="rdSync" class="btn small hidden" title="只读消化稿重长卡片，不调用模型、不产生 API 费用">只同步卡片（不花钱）</button>
-            <button id="rdPractice" class="btn small hidden" title="标成「待实践」= 这条我打算真的去用；再点一下取消">标为待实践</button>
-            <button id="rdDel" class="btn small danger">删除</button>
-            <span class="seg" id="rdWidth" title="正文宽度">
-              <button data-w="1" class="on">标准</button><button data-w="2">宽</button><button data-w="3">满</button>
+        <section class="panel glass">
+          <header><h3>模型配置</h3><span class="lbl">OpenAI 兼容接口</span></header>
+          <div class="grid2">
+            <label>接口地址<input class="inp" id="cfgBase" placeholder="https://api.deepseek.com"></label>
+            <label>模型名<input class="inp" id="cfgModel" placeholder="deepseek-flash"></label>
+            <label>API Key<input class="inp" id="cfgKey" type="password" placeholder="仅存本机 config.json，不外传"></label>
+            <label>温度 temperature<input class="inp" id="cfgTemp" placeholder="0.3"></label>
+            <label>输出上限 maxTokens<input class="inp" id="cfgMax" placeholder="6000"></label>
+            <label>抽帧上限 maxFrames<input class="inp" id="cfgFrames" placeholder="6"></label>
+          </div>
+          <dl class="explain">
+            <dt>温度 temperature</dt><dd>模型输出的随机程度。0.1 更保守、复现性强；0.7 以上更发散。消化素材要贴着原文走，默认 <b>0.3</b> 即可，除非你希望它多做一些改写。</dd>
+            <dt>输出上限 maxTokens</dt><dd>模型单次回答的长度上限（含它自己的思考过程）。太小时消化稿会写到一半被截断，通常表现为「卡片少了几段」。素材很长、或提示「被 max_tokens 截断」时，把它从 <b>6000</b> 调到 12000–20000。</dd>
+            <dt>抽帧上限 maxFrames</dt><dd>视频里最多截多少帧交给模型识字，默认 <b>6</b>。数值越大越容易抓到画面里的表格和字幕，代价是更慢、更费 token。只影响视频类素材。</dd>
+          </dl>
+          <div class="dock" style="margin-top:12px">
+            <button class="act act--primary" id="cfgSave"><svg><use href="#i-check"/></svg>保存</button>
+            <button class="act" id="cfgTest"><svg><use href="#i-spark"/></svg>测试连通</button>
+            <span class="lbl" id="cfgStatus"></span>
+          </div>
+          <p class="tip" id="cfgKeySource"></p>
+        </section>
+
+        <section class="panel glass">
+          <header><h3>Cookie 通行证</h3><span class="lbl">仅在被登录墙阻挡时需要</span></header>
+          <p class="tip">浏览器<b>确认已登录</b>该平台 → F12 → Network → 刷新 → 点第一个请求 → Request Headers 里整串复制 <code>Cookie:</code> 后面的值贴进来。支持四种粘法：请求头整串 / 折行粘贴 / <code>cookies.txt</code>(Netscape) / 插件 JSON 导出。仅写入本机 <code>cookies/</code>（已在 .gitignore 内），不进笔记、不上传，接口只回元信息。</p>
+          <div class="grid2">
+            <label>站点
+              <span class="sel" id="ckSiteSel" data-value="zhihu">
+                <button class="sel-btn" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="sel-cur">知乎</span><i>▾</i></button>
+                <div class="sel-pop" role="listbox">
+                  <button role="option" data-v="zhihu" class="on">知乎</button>
+                  <button role="option" data-v="douyin">抖音</button>
+                  <button role="option" data-v="xiaohongshu">小红书</button>
+                  <button role="option" data-v="instagram">Instagram</button>
+                  <button role="option" data-v="facebook">Facebook</button>
+                  <button role="option" data-v="bilibili">B站</button>
+                  <button role="option" data-v="weixin">公众号</button>
+                </div>
+              </span>
+              <select id="ckSite" hidden>
+                <option value="zhihu">知乎</option><option value="douyin">抖音</option>
+                <option value="xiaohongshu">小红书</option><option value="instagram">Instagram</option>
+                <option value="facebook">Facebook</option><option value="bilibili">B站</option>
+                <option value="weixin">公众号</option>
+              </select>
+            </label>
+            <label>本机已有<div id="ckList" class="cklist">（无）</div></label>
+          </div>
+          <div class="form-row"><span>Cookie 内容</span><textarea id="ckVal" rows="3" placeholder="z_c0=...; d_c0=...; 整串粘贴，无需自行补分号"></textarea></div>
+          <div class="form-row"><span>同一请求里的 User-Agent（可选，强烈建议填写）</span>
+            <input class="inp" id="ckUa" type="text" placeholder="Chrome 版本需与浏览器一致，否则指纹自相矛盾会被拒"></div>
+          <div class="dock">
+            <button class="act act--primary" id="ckSave"><svg><use href="#i-key"/></svg>保存</button>
+            <button class="act" id="ckCheck"><svg><use href="#i-eye"/></svg>体检这份 cookie</button>
+            <button class="act" id="ckDrop"><svg><use href="#i-close"/></svg>清除所选站点</button>
+            <span class="lbl" id="ckStatus"></span>
+          </div>
+          <div id="ckCheckOut" class="pvbox" hidden></div>
+        </section>
+
+        <section class="panel glass">
+          <header><h3>上传文件入库</h3><span class="lbl">md · txt · html · pdf · docx · 图片 · 音视频</span></header>
+          <div id="drop" class="drop">
+            <input type="file" id="upFile" class="drop-input">
+            <div class="drop-face">
+              <div class="drop-icon"><svg style="width:22px;height:22px"><use href="#i-upload"/></svg></div>
+              <div class="drop-tip"><b>将文件拖到此处</b>，或点击选择</div>
+              <div class="drop-sub">音视频走本地 faster-whisper 转写；图片走视觉识字</div>
+            </div>
+          </div>
+          <div class="dock" style="margin-top:12px">
+            <span class="lbl" id="upName"></span>
+            <button class="act act--primary" id="upBtn" disabled>读取并消化</button>
+            <progress id="upBar" max="100" value="0" class="hidden"></progress>
+            <span class="lbl" id="upStatus"></span>
+          </div>
+        </section>
+
+        <section class="panel glass hidden" id="digestResult">
+          <header><h3>消化结果</h3><span class="lbl" id="digestResultCnt"></span></header>
+          <div id="digestCards" class="newcards"></div>
+          <div id="digestOut" class="md"></div>
+        </section>
+      </div>
+
+      <aside class="panel glass">
+        <header><h3>处理流程</h3><span class="lbl">pipeline</span></header>
+        <div class="steps" id="pipeSteps"></div>
+        <p class="tip" id="pipeNote"></p>
+        <p class="tip">要在一份材料下补卡：打开这份原料，用阅读页右侧「在这份材料下补一张卡」。</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================ 阅读 ============================ -->
+  <section class="view" id="view-read">
+    <div class="toolbar">
+      <button class="act" id="backBtn"><svg style="transform:rotate(180deg)"><use href="#i-arrow"/></svg>返回</button>
+      <span style="flex:1"></span>
+      <span class="seg" id="rdWidth" title="正文宽度">
+        <button data-w="1" class="on">窄</button><button data-w="2">标准</button><button data-w="3">满</button>
+      </span>
+      <button class="act" id="rdSync" title="不调用模型，只按现有消化稿重长卡片，不产生费用">同步卡片（不调模型）</button>
+      <button class="act" id="rdRedo" title="按当前原文重新生成消化稿与卡片，会调用模型">按原文重新生成</button>
+      <button class="act" id="rdEdit"><svg><use href="#i-pen"/></svg>改写</button>
+      <button class="act" id="rdSave" hidden><svg><use href="#i-check"/></svg>仅保存本文件</button>
+      <button class="act" id="rdDel"><svg><use href="#i-close"/></svg>移入回收站</button>
+    </div>
+    <div class="read">
+      <article class="read-main glass">
+        <h2 id="readTitle"></h2>
+        <div class="read-meta" id="readMeta"></div>
+        <div class="tagbox" id="tagBox">
+          <span class="lbl">标签</span>
+          <div class="chips" id="cardTags"></div>
+          <input class="inp tag-add" id="tagAdd" placeholder="加一个标签，回车确认">
+        </div>
+        <p class="lbl" id="rdStatus"></p>
+        <p class="lbl" id="rdNote" hidden></p>
+        <div id="rdPlayer"></div>
+        <textarea id="rdText" class="hidden" rows="18" spellcheck="false"></textarea>
+        <div class="read-cols" id="readCols">
+          <div class="prose-wrap">
+            <div class="prose md" id="readBody"></div>
+          </div>
+          <aside class="memo-col" id="memoCol" hidden>
+            <div class="memo-head"><b>批注</b><span class="lbl" id="memoCnt"></span></div>
+            <div class="memo-inner" id="memoInner"></div>
+          </aside>
+        </div>
+        <p class="tip" id="annoTip">把鼠标移到某一段上，会出现「高亮这一段 / 写批注」。高亮写成 Obsidian 原生的 ==标记==；批注存在这一段后面，显示在文章右侧这一栏，改和删都在这里。两者都写回这个 .md 文件，在 Obsidian 里同样可见。</p>
+      </article>
+
+      <aside class="rail read-rail">
+        <section class="panel glass" id="stPanel">
+          <header><h3>状态</h3></header>
+          <div class="chips" id="stFlow"></div>
+          <p class="lbl" id="stDirty" hidden></p>
+          <p class="tip" id="stTip"></p>
+        </section>
+        <section class="panel glass" id="outPanel">
+          <header><h3 id="outTitle">链出去的</h3><span class="lbl" id="outCnt"></span></header>
+          <div class="rows" id="outlinks"></div>
+          <p class="lbl" id="fromRaw"></p>
+        </section>
+        <section class="panel glass" id="blPanel">
+          <header><h3>反向链接</h3><span class="lbl" id="blCnt"></span></header>
+          <div class="rows bl" id="backlinks"></div>
+        </section>
+        <section class="panel glass" id="tasksPanel">
+          <header><h3>本篇待复习</h3><span class="lbl" id="tasksCnt"></span></header>
+          <div class="due mini" id="readTasks"></div>
+        </section>
+        <section class="panel glass" id="makeCardPanel">
+          <header><h3>补一张卡</h3></header>
+          <div class="seg" id="mcMode" data-mode="ai" style="margin-bottom:12px">
+            <button data-m="ai" class="on">让模型按一句话生成</button><button data-m="own">自己写</button>
+          </div>
+          <div class="form-row"><span>挂在哪份原料下</span>
+            <span class="sel" id="mcSrcSel" data-value="">
+              <button class="sel-btn" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="sel-cur">不挂原料</span><i>▾</i></button>
+              <div class="sel-pop" role="listbox" id="mcSrcPop"></div>
             </span>
-            <span id="rdStatus" class="status"></span>
+            <select id="mcSrc" hidden></select></div>
+          <div class="form-row"><span>类型</span>
+            <span class="sel" id="mcKindSel" data-value="concept">
+              <button class="sel-btn" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="sel-cur">概念</span><i>▾</i></button>
+              <div class="sel-pop" role="listbox">
+                <button role="option" data-v="concept" class="on">概念</button>
+                <button role="option" data-v="connection">连接</button>
+                <button role="option" data-v="question">问题</button>
+              </div>
+            </span>
+            <select id="mcKind" hidden><option value="concept">概念</option><option value="connection">连接</option><option value="question">问题</option></select></div>
+          <div class="form-row" id="mcAskRow"><span>一句话说明要补什么</span>
+            <input class="inp" id="mcAsk" type="text" placeholder="例：把这篇里的「验证器」讲成一张概念卡"></div>
+          <div class="form-row" id="mcOwnRow" hidden><span>卡名（一句主张）</span><input class="inp" id="mcName" type="text" placeholder="一句能独立成立的主张"></div>
+          <div class="form-row" id="mcOwnText" hidden><span>正文</span><textarea id="mcText" rows="3" placeholder="连接卡要写明接的是库里哪张卡。"></textarea></div>
+          <div class="form-row" id="mcOwnUse" hidden><span>用在哪</span><input class="inp" id="mcUse" type="text" placeholder=""></div>
+          <div class="dock">
+            <button class="act act--primary" id="mcAdd"><svg><use href="#i-pen"/></svg>生成并入库</button>
+            <span class="lbl" id="mcStatus"></span>
           </div>
-          <div id="rdPlayer"></div>
-          <textarea id="rdText" class="hidden" rows="18" spellcheck="false"></textarea>
-          <div id="readBody" class="md w1"></div>
-        </div>
-        <aside class="read-rail">
-      <div class="panel">
-        <h3>我的批注</h3>
-        <p class="hint">读完随手写，不用管格式。我会按你的理解归位到概念 / 连接 / 问题卡，
-           原文批注也留在这张卡上。</p>
-        <textarea id="annoText" rows="3" placeholder="我读到这里的想法 / 没看懂的地方 / 想验证的假设…"></textarea>
-        <div class="row"><button id="annoBtn" class="btn primary">存进这张卡</button>
-          <span id="annoStatus" class="status"></span></div>
-      </div>
-      <div class="panel">
-        <h3>自己补一张卡</h3>
-        <p class="hint">模型漏掉的想法你自己写进来，出处自动挂到当前这份原料上。
-           名字要写成一句「离开这篇内容还成立」的主张。</p>
-        <div class="row">
-          <select id="mcKind" class="small">
-            <option value="concept">概念</option>
-            <option value="connection">连接</option>
-            <option value="question">疑问</option>
-          </select>
-          <input id="mcName" type="text" placeholder="卡名（一句主张）">
-        </div>
-        <textarea id="mcText" rows="3" placeholder="卡片正文。连接卡要写明接的是库里哪张卡，如 [[已有卡名]]。"></textarea>
-        <input id="mcUse" type="text" placeholder="用在哪（概念卡填这个，别的可空）">
-        <div class="row"><button id="mcAdd" class="btn">建这张卡</button>
-          <span id="mcStatus" class="status"></span></div>
-        <p class="hint" id="mcSource"></p>
-      </div>
-      <div class="panel">
-        <h3>本篇待复习</h3>
-        <div id="readTasks" class="list"></div>
-      </div>
-      <div class="panel">
-        <h3>反向链接</h3>
-        <div id="backlinks" class="list"></div>
-      </div>
-        </aside>
-      </div>
+          <div class="prog" id="genProg" hidden>
+            <div class="prog-bar"><i id="genFill"></i></div>
+            <p class="tip" id="genTip"></p>
+          </div>
+          <p class="tip" id="mcSource"></p>
+        </section>
+      </aside>
     </div>
   </section>
 </main>
 
-<div id="toast" class="toast"></div>
+<!-- 衣柜 -->
+<div class="scrim" id="scrim"></div>
+<aside class="wardrobe" id="wardrobe" role="dialog" aria-label="衣柜">
+  <header>
+    <div>
+      <h2>衣柜</h2>
+      <span class="lbl">12 sets · 全部取自实测抽帧</span>
+    </div>
+    <button class="act" id="wardrobeClose"><svg><use href="#i-close"/></svg></button>
+  </header>
+  <p class="note">每套皮肤的颜色取自变装视频实测抽帧：对人物区域聚类、滤掉背景灰后剩下的就是这套衣服的色。切换皮肤时 IP 同步换装。</p>
+  <div class="hangers" id="hangers"></div>
+</aside>
+
+<!-- 命令面板 -->
+<div class="palette" id="palette" role="dialog" aria-label="搜索">
+  <div class="cap"><svg><use href="#i-search"/></svg><input id="palInput" placeholder="输入卡片名、标签或正文关键词…"><kbd>Esc</kbd></div>
+  <div class="results" id="palResults"></div>
+</div>
+
+<!-- 浮层：状态菜单 / 段落工具 / 确认框 -->
+<div class="smenu" id="statusMenu" hidden></div>
+<div class="blk-tools" id="blkTools" hidden>
+  <button data-blk="mark"><svg><use href="#i-mark"/></svg>高亮这一段</button>
+  <button data-blk="anno"><svg><use href="#i-note"/></svg>写批注</button>
+</div>
+<div class="anno-edit" id="annoEdit" hidden>
+  <div class="seg" id="annoType" style="margin-bottom:8px">
+    <button data-t="note" class="on">理解</button><button data-t="tip">要实践</button><button data-t="question">存疑</button>
+  </div>
+  <textarea id="annoText" rows="3" placeholder="写两句自己的话，Ctrl+Enter 保存"></textarea>
+  <div class="dock"><button class="act act--primary" id="annoSave"><svg><use href="#i-check"/></svg>保存批注</button>
+    <button class="act" id="annoCancel">取消</button><span class="lbl" id="annoStatus"></span></div>
+</div>
+<div class="dlg" id="dlg" hidden role="dialog" aria-modal="true">
+  <div class="dlg-box glass">
+    <h3 id="dlgTitle">确认</h3>
+    <div id="dlgBody"></div>
+    <div class="dock"><button class="act" id="dlgNo">取消</button><button class="act act--primary" id="dlgYes">确定</button></div>
+  </div>
+</div>
+
+<!-- 常驻小助手 -->
+<div id="pal" class="pal" aria-label="知识库助手">
+  <div class="pal-say" id="palSay"></div>
+  <span class="pal-badge" id="palBadge"></span>
+  <img id="palImg" class="pal-img" alt="知识库 IP 形象">
+</div>
+
+<!-- 变装转场 -->
+<div class="changefit" id="changefit"><span class="curtain l"></span><span class="curtain r"></span><span class="flash"></span></div>
+<canvas id="confetti"></canvas>
+<div class="pal-hint" id="palHint">可拖动 · 点击会有回应</div>
+<div class="toast" id="toast"></div>
+<div class="peek" id="peek" hidden></div>
+<div class="ticker"><div class="track" id="ticker"></div></div>
+
 <script src="/app.js"></script>
 </body>
 </html>

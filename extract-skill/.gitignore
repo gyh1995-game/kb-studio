@@ -1,0 +1,8 @@
+# 凭据和产物都不许进仓库
+cookies/
+extract-config.json
+out/
+__pycache__/
+*.pyc
+# 转写时下载的临时视频，不发布
+media/

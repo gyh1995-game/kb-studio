@@ -1247,14 +1247,54 @@ BREAK_BEFORE_RE = re.compile(
 KEEP_LINE_RE = re.compile(r"^\s*([#|>\-*•]|\d+[.)、]\s|!\[|`|https?://\S{40,})")
 
 
+URL_HEAD_RE = re.compile(r"^https?://$")
+URL_FRAG_RE = re.compile(r"^[A-Za-z0-9._\-/?=:%&+~#$@'!*()\[\]]+$")
+
+
+def unbreak_urls(text):
+    """把被硬断行的链接拼回一条。
+
+    知乎 / 公众号的正文里实测见过这种：`https://` 独占一行，域名和路径各占一行，
+    中间还夹空行（页面结构本来就这样，抓取时一起带下来了）。这种文本喂给模型会把一条链接
+    读成三个词，前端也只能渲染出三段断字 —— 「链接莫名其妙换行」的根因在数据里，不在样式里。
+
+    只做一件保守的事：某行的尾巴正好是 `http(s)://`，就把它后面那些「整行只有 URL 字符」的行
+    接上来（跳过空行）。含空格、含中文的行一律不接，不会把句子并进链接。"""
+    if not text or "http" not in text:
+        return text
+    lines = text.split("\n")
+    out, i, joined = [], 0, 0
+    while i < len(lines):
+        cur = lines[i].rstrip()
+        if not URL_HEAD_RE.match(cur.strip()):
+            out.append(lines[i])
+            i += 1
+            continue
+        buf, k = cur, i + 1
+        while k < len(lines):
+            nxt = lines[k].strip()
+            if not nxt:
+                k += 1
+                continue
+            if not URL_FRAG_RE.match(nxt):
+                break
+            buf += nxt
+            k += 1
+        out.append(buf)
+        joined += 1
+        i = k
+    return "\n".join(out) if joined else text
+
+
 def reflow_text(text, target=150, hard=240):
     """把「一整段被压成一行」的文本恢复成段落。
     从知乎 / 小红书 / 微信复制、以及老版本导入的 txt，常见整个回答挤在一行 ——
     这种文本喂给模型会丢结构，人在手机上也读不动。
-    只插换行，一个字都不改（调用方可以断言去掉换行后与原文逐字相同）。
+    先拼回被硬断行的链接（那要删掉换行），再插段落换行；除此之外一个字不改。
     """
     if not text:
         return text
+    text = unbreak_urls(text)
     out = []
     for line in text.split("\n"):
         if len(line) <= hard or KEEP_LINE_RE.match(line):

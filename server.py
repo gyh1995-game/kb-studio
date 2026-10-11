@@ -15,6 +15,7 @@ import re
 import io
 import sys
 import json
+import math
 import time
 import base64
 import shutil
@@ -159,13 +160,14 @@ def parse_frontmatter(text):
     return fm, body
 
 
-SYSTEM_FILES = {"system.md", "index.md", "log.md", "learner_profile.md",
-                "progress.md", "revision_notes.md"}
-
-# 与 Obsidian 的 userIgnoreFilters 保持同一口径，但这里用白名单：
-# 只有这些位置的内容才算卡片，根目录其余散件（部署说明、工具文件、旧笔记）一律不进仪表盘。
+# 学习内容只认这两个目录。根目录那批运行文件（system.md / index.md / log.md / 进度 /
+# 复习批注 / 学习者画像 / 首页）是这套工具的说明书和台账，不是他学过的东西 ——
+# 之前把它们当卡片读进列表，空库第一眼就是 6 张「系统」卡，图谱里也多出 6 个孤立点。
+# 文件照旧存在、照旧被 digest 提示词读取，只是不进卡片列表和图谱。
 INDEX_DIRS = {"wiki", "raw"}
-INDEX_ROOT_FILES = SYSTEM_FILES | {"首页.md"}
+INDEX_ROOT_FILES = frozenset()   # 保留这个名字给旧脚本用；根目录一律不算卡片
+RUNTIME_FILES = {"system.md", "index.md", "log.md", "learner_profile.md",
+                 "progress.md", "revision_notes.md", "首页.md"}
 
 _FM_KINDS = {"concept", "connection", "question", "raw", "system"}
 
@@ -179,7 +181,7 @@ def card_kind(rel_path):
         return "question"
     if rel_path.startswith("raw/"):
         return "raw"
-    if "/" not in rel_path and rel_path in SYSTEM_FILES:
+    if "/" not in rel_path and rel_path in RUNTIME_FILES:
         return "system"
     return "page"
 
@@ -222,25 +224,51 @@ def scan_vault():
         tags = []
         if isinstance(fm.get("tags"), list):
             tags = [str(t).lstrip("#") for t in fm["tags"]]
-        tags += [t.lstrip("#") for t in re.findall(r"(?<![\w\[])#([\w\u4e00-\u9fa5]+)", body)]
-        # 过滤纯数字 / 纯符号（正文里的 #1、#2 序号会被误当成标签）
-        tags = sorted(set(t for t in tags if t and not re.fullmatch(r"[\d\W_]+", t)))
-        # 摘要：取正文里第一段有意义的话
+        elif fm.get("tags"):
+            tags = [str(fm["tags"]).lstrip("#")]
+        # 正文里的 #标签：先去掉代码块和行内 code（CSS 色值、JS 标识符都在那儿），
+        # 再要求 # 前面是行首或空白 —— Obsidian 自己就是这么认的。
+        plain = strip_code(body)
+        tags += re.findall(r"(?:(?<=^)|(?<=[\s（(「『]))#([\w\u4e00-\u9fa5]{1,%d})" % TAG_MAX_LEN, plain)
+        tags = clean_tags(tags)
+        # 摘要：取正文里第一段有意义的话（跳过标题、引用、表格这种结构性行）
         summary = ""
         for ln in body.split("\n"):
             s = ln.strip().lstrip("#").strip()
-            if len(s) > 12 and not s.startswith("---"):
+            if not s or s.startswith("---") or s.startswith(("|", ">", "!", "-", "*", "1.")):
+                continue
+            if len(s) > 12:
                 summary = s[:120]
                 break
         title = fm.get("title") or p.stem
+        # aliases 也要进列表：[[双链]] 指向的常常是别名或标题，不是文件名
+        al = fm.get("aliases") or fm.get("alias") or []
+        if isinstance(al, str):
+            al = [al]
+        status_raw = str(fm.get("status", "")).strip()
+        mt = str(fm.get("media_type", "")).strip()
+        if mt not in MEDIA_TYPES:
+            mt = guess_media_type(fm, kind)
+        est = as_int(fm.get("est_min"))
+        # 字数和时长都只按正文算：frontmatter、Markdown 语法、裸 URL 不算字，也不该占阅读时间
+        chars = count_words(body)
+        if not est and kind in ("raw", "concept", "connection", "question"):
+            est = est_minutes(chars, mt or "文本", as_int(fm.get("duration_ms")),
+                              is_card=kind != "raw", images=as_int(fm.get("images")),
+                              text=body)
         cards.append({
             "path": rel,
             "name": p.stem,
             "title": str(title),
+            "aliases": [str(a).strip() for a in al if str(a).strip()],
             "kind": kind,
             "kindLabel": KIND_LABEL[kind],
             "level": str(fm.get("level", "")),
-            "status": str(fm.get("status", "")),
+            "status": norm_status(status_raw),
+            "status_raw": status_raw,
+            "media_type": mt,
+            "est_min": est,
+            "from_raw": str(fm.get("from_raw", "")).replace("\\", "/"),
             "platform": str(fm.get("platform", "")),
             "author": str(fm.get("author", "")),
             "source": str(fm.get("source", "")),
@@ -251,6 +279,7 @@ def scan_vault():
             "updated": str(fm.get("updated", "")),
             "mtime": int(p.stat().st_mtime),
             "size": len(text),
+            "chars": chars,
         })
     return cards
 
@@ -279,25 +308,33 @@ def build_graph(cards):
 
 # ---------------------------------------------------------------- AI 消化
 
-DIGEST_SYSTEM = """你是一个个人知识库的「收藏夹消化器」。你的输出会直接存成 Obsidian 笔记。
+DIGEST_SYSTEM = """你是一个个人知识库的「收藏夹消化器」。你的输出会直接存成 Obsidian 笔记里的「消化稿」一节。
 
 规则：
-1. 只输出 Markdown，不要任何前后缀说明。
-2. 严格按给定的模板结构输出，章节标题一字不改。
-3. 摘要要「核心观点 + 可执行清单」，拒绝空泛的套话。
-4. 概念、连接、引文必须来自原文真实出现过的内容，禁止编造；原文没给的写「原文未给出」。
-5.「我的疑问」是这份产出里最值钱的部分，宁可少写观点也不要少写疑问。
-6. 语言：中文。
+1. 只输出 Markdown，不要任何前后缀说明，也不要把整篇包在代码块里。
+2. 章节标题按给定顺序一字不改、不增不减；每节的条目用 `- ` 开头，一行一条，条目内部不再换行。
+3. 概念、连接、引文必须能在原文里指认出来，禁止编造；原文没给的写「原文未给出」。
+4.「我的疑问」是这份产出里最值钱的部分，必须正好 3 条，少一条就是不合格。
+5. 正文里不写处理过程（用了多少帧、生成了几张卡、备份到哪里），也不重复系统自己记录的东西：
+   类型、预估时长、来源 URL、卡列表、反向链接都由字段和界面给出，不要抄进正文。
+6. 字段里不写元话语：不许出现「（隐含…）」「我认为」「不过…」「可能需要」这类推理或犹豫，
+   也不许在一个字段里并列多个候选（「A，或者 B，或者 C」）—— 一个位置只放一个值。
+7. 每个位置只有三种合法取值：原文里能指认并归一化的值 / 保留已有的旧值 / 写「无」。
+   不许留空、不许猜、不许用「大家都这样」当依据。
+8. 消化稿是**转述不是摘抄，也不是泛化**：原文里的具体名词、数字、型号、量级、地名必须活下来；
+   句子结构可以重写，但不许把「他测了 3 个账号」写成「多数人」。主语用实体名，不用「它 / 这 / 他们」。
+9. 一次出现不是一条规律：只发生过一件事的，写进「我的疑问」当待验证，不要写成普适主张。
+10. 语言：中文。
 """
 
 DIGEST_PROMPT = """把下面的内容消化成知识库卡片。严格按模板输出，只输出 Markdown。
-处理规范的完整版本见 skill/PROMPTS.md（概念/连接/疑问的判定口径以它为准）。
+处理规范的完整版本见 skill/PROMPTS.md（概念/连接/疑问的判定口径、标签白名单和排版规则以它为准）。
 
 ## 核心观点
-3-5 条，每条一句话，只写这篇真正的主张；不要复述背景，不要写「本文介绍了」。
+3-5 条，每条一句话（≤40 字），只写这篇真正的主张；不要复述背景，不要写「本文介绍了」。
 
 ## 可执行清单
-能照做的步骤 / 清单 / 参数；纯观点类就列支撑论据。没有写「无」。
+能照做的步骤 / 清单 / 参数；纯观点类就列支撑论据。没有写「无」。≤5 条。
 
 ## 概念候选
 **最多 3 个。** 概念是知识块，不是这条内容的履历。三条全过才算：
@@ -310,8 +347,12 @@ DIGEST_PROMPT = """把下面的内容消化成知识库卡片。严格按模板�
 点赞、收藏、评论、转发、播放量、star 数、藏赞比这类互动数据；作者 IP 归属、发布时间；
 被当成卖点写出来的数字口号（「1 亿播放量」那种）。
 
-每张概念卡是一张**会不断长大的页**，不是一句摘要。每行格式（四段都要有，缺一段就别提这条）：
-- 概念名 —— 主张一句话｜为什么成立：这篇里能支撑它的依据（例子 / 数据 / 推演，1-2 句）｜边界：什么条件下不成立、别在哪些场景用它｜用在哪：什么场景会用到它
+每张概念卡是一张**会不断长大的页**，不是一句摘要。每行格式（五段都要有，缺一段就别提这条）：
+- 概念名 —— 主张一句话｜为什么成立：这篇里能支撑它的依据（例子 / 数据 / 推演，1-2 句）｜边界：什么条件下不成立、别在哪些场景用它｜用在哪：什么场景会用到它｜标签：这条主张自己的主题词，2-3 个，顿号分隔
+
+**概念名本身必须是一句主谓句**（8–25 字），读一遍就能同意或反对：
+✓「量产变体不等于流量」「知识库的价值在编译层不在存储层」
+✗「知识库」（光杆名词）、「关于流量的一些思考」（主题不是主张）、「AI 该持续维护结构」（从句被截断）。
 
 「为什么成立」里的依据必须能在原文里指认出来（一个数字、一个例子、一句原话、一个步骤都行）；
 只有断言没有论证的，就把它写进「我的疑问」而不是概念卡。「边界」写不出来的，这条也别提 ——
@@ -322,18 +363,23 @@ DIGEST_PROMPT = """把下面的内容消化成知识库卡片。严格按模板�
 一个主张只留一张卡，重复起名字等于把这个库搞脏。
 
 ## 连接候选
-**最多 2 条，宁缺毋滥。** 连接的价值是把新东西接到已有认知上：**另一头必须是文末清单里的卡名**；
-接不上就写「无」，不要为了凑数现编一个假关系。
-格式：- 本篇的主张 ↔ 已有卡名 —— 关系（前置 / 矛盾 / 同结论不同路径 / 上下位）｜为什么真的相关
+**最多 2 条，宁缺毋滥。** 连接的价值是把新东西接到已有认知上。另一头可以是：
+① 文末「库里已有的卡」清单里的卡名；② **你自己在本次「概念候选」里刚提出的那几条**。
+两者都挑不出来就写「无」，不要为了凑数现编一个假关系。一条连接里最多两个 [[双链]]。
+格式：- 本篇的主张 ↔ 另一头的卡名 —— 关系（前置 / 矛盾 / 同结论不同路径 / 上下位 / 互补）｜为什么真的相关（一句机制，不许写「都在讲 X」这种话题重合）
+**跨来源优先**：接上你以前那篇的东西，比把同一篇里的两个主张互连更有价值。
 
 ## 我的疑问
-**3 条**，覆盖下面四类中至少两类，这是本库最值钱的产出：
-- 边界：什么条件下不成立？换个平台 / 人群 / 预算还成立吗？
-- 证据：作者的数据和例子够不够？哪里只有断言没有论证？
-- 与我：这条和我正在做的哪件事直接相关？能改我哪个动作？
-- 待验证：哪一条我一周内能自己试？成败怎么判定？
-每条是一个**能在 20 字内问完的短问题**（它直接当卡片标题），后面可跟一句为什么值得问。
-不要把整句原文抄成问题，也不要写「是不是」「如何做」这种没有指向的问句。
+**正好 3 条**，覆盖下面四类中至少两类，这是本库最值钱的产出。
+每行**必须**是这个格式，四段一段都不能少（第一段直接当卡片标题和复习条目）：
+
+`- 维度：能在 20 字内问完的短问题 —— 是什么让我问出这句 —— 我已经知道什么 —— 我还卡在哪`
+
+维度只能从这四个里选：**边界 / 证据 / 与我 / 待验证**（不写前缀系统就认不出这道题属于哪类）。
+不要把整句原文抄成问题，也不要写「是不是」「如何做」这种没有指向的问句；
+问题本身要**合上这篇也答得出**，别写成「第 3 段说的那个东西怎么改」。
+「我已经知道什么」没有就写「无」，不许留空、不许编。
+这一节决定复习队列里有没有东西，空着等于这份素材白处理了。
 
 ## 值得记住的原话
 1-3 句，用 > 引用格式，只挑信息密度高的；不为凑数而摘。
@@ -341,7 +387,32 @@ DIGEST_PROMPT = """把下面的内容消化成知识库卡片。严格按模板�
 ## 下一步
 1-3 条具体动作（要查什么、要试什么、还要丢哪些链接进来）。
 
-硬规则：概念、数据、作者、原文句子都必须来自给定内容，**不许编造**；读不出来的就写「原文未给出」。
+## 主题标签
+一行写完，2-4 个主题词，顿号分隔。标签要能把一批卡筛出来。
+只写主题（例：提示词工程、知识管理、视频转写、竞价投放）。
+**不许写**：平台名（抖音 / 知乎）、人名和账号名、产品名、版本号、纯数字、互动数据；
+状态词（未读 / 已读 / 已消化 / 待吃透 / 待实践 / 已内化）；维度词（边界 / 证据 / 与我 / 待验证 / 追问）；
+代码里的词和色值（readBody、#c4734a 那种）；每个词不超过 12 个字。
+
+排版硬规则（这几条会被机器检查，违反会被判成格式不合格）：
+- 一行只写一条，条目中间不要手动换行；
+- 链接写成 [短锚文本](URL)，不要把裸 URL 夹在句子中间；确实要贴 URL 就让它独占一行；
+- 不写表格，除非每行列数完全一致，且单元格里不放 URL；
+- 只用 ## 一级标题，且只用上面给的那几个段名；不要写 `# 一级`（文件名就是标题），标题行里不放链接；
+- 正文里出现的 * _ | 若不是 Markdown 语法，写成 \\* \\_ \\|；中文与英文/数字之间加一个半角空格；
+- 一张概念卡只装一条主张，别把三条不相干的观点塞进同一条；
+- 「我的疑问」每条要**合上原文也答得了**：把问题单独贴出来，没读过原文的人能作答；
+- 不要输出「这张原料长成的卡」「本次长成的卡」这类小节，也不要输出 frontmatter 和 `---`；
+- 不要写「出处：」「来源：」这类行，出处由系统统一补；也不要写「约 X 分钟」「类型：视频」，
+  时长和类型由抓取结果算，不许自己估。
+
+反面例子（每一条都是这里真出过的事故）：
+✗ - 这个工具很好用 —— 它能提高效率｜边界：无｜用在哪：日常      ← 是评价不是主张，边界空着就别提
+✗ ## 概念候选：hypit                                            ← 产品名当概念
+✗ 出处：https://www.zhihu.com/question/2076689931695546845      ← 裸 URL 夹进正文，窄屏撕成三截
+✗ tags: 边界、已读、消化生成、#c4734a、抖音                      ← 五个里没有一个能当标签
+✗ 状态：已消化                                                   ← 第六个状态值，不在五值之内
+✗ ## 出处 / ### 为什么成立                                       ← 维度升格成标题，大纲被撑乱
 
 ================== 以上是固定规范，以下是本条素材 ==================
 
@@ -355,6 +426,51 @@ DIGEST_PROMPT = """把下面的内容消化成知识库卡片。严格按模板�
 
 【库里已有的卡】（连接候选的"另一头"只能从这份清单里挑，挑不出就写「无」）
 {existing}
+"""
+
+
+# ---------------------------------------------------------------- 学习总结提示词
+#
+# 小助手头上那两个按钮（今日 / 本周）走这一份。证据由前端从本机 localStorage 带来
+# （读了哪几张卡、停留多久、勾掉了哪条复习），正文由这里现读 —— 后端不存阅读行为，
+# 所以「你学了什么」这件事只有客户端知道，模型只负责把它写成一段人话。
+
+SUMMARY_SYSTEM = """你在给一个人写他自己的学习总结，不是写工作汇报。
+
+读的人就是本人，三个月后回来看这一篇。他要能一眼想起那几天自己在想什么。
+
+规则：
+1. 只写证据里出现过的事。没读过就是没读过，不许编「深入研读了」，不许补材料里没有的数字或结论。
+2. 写**主张和判断**，不写动作流水账。「看了 5 张卡」没价值，「他反复回到『编译层 vs 存储层』这条主张上」才有价值。
+3. 把散在几张卡里的东西连起来说：同一话题下出现过的重复、矛盾、还没接上的线，这些他自己看不出来。
+4. 允许指出问题：只收藏没重读、某条主张一直没接双链、复习拖过了账期 —— 但要说依据，不许说教。
+5. 不夸人，不用「棒」「加油」「继续保持」这类话，不写 emoji。
+6. 中文，Markdown，只用 `- ` 列表和 `**粗**`，不写 `#` 标题，不写表格，不放裸链接。
+7. 每个字段只有三种合法取值：证据里有的 / 证据里明确没有（就写「没有」）/ 不适用。不许猜。
+"""
+
+SUMMARY_PROMPT = """把下面这份证据写成一段{label}学习总结。严格按四段输出，段名一字不改：
+
+## 这一{unit}学了什么
+3-6 条，每条一句话，说**主张**不说动作。同一话题的几张卡合并成一条。
+
+## 反复回到哪几处
+1-3 条。证据里被读了两遍以上、或者停留明显更久的那几张卡，说明它还没被你想清楚。
+
+## 还没接上的线
+1-3 条。哪些主张之间显然有关系但库里没建连接卡、哪些卡一条双链都没有。
+没有就写「没有」。
+
+## 下一{unit}该做什么
+最多 3 条，每条要能直接动手（重读哪张、补哪条连接、丢哪类链接进来），不许写「多学习」这种。
+
+================== 以下是证据，只依据它，不许外推 ==================
+
+【统计口径】{label}：{span}
+【新入库的卡】共 {made_n} 张：{made}
+【勾掉的复习条目】共 {done_n} 条：{done}
+【打开过的卡】共 {read_n} 张（停留秒数是本机记的，只到「打开阅读页」这一层）：
+{read}
 """
 
 
@@ -381,6 +497,9 @@ PROVIDER_DEFAULTS = {
     "maxTokens": 6000,
     "visionOcr": True,      # 图文笔记的正文常常长在图上：把本地化的图交给模型识字
     "maxOcrImages": 6,      # 一条最多认几张图（控制耗时和 token）
+    # 抽帧张数以前只在 digest 里现读（load_config().get("maxFrames")），却不在白名单里，
+    # 所以「模型配置」这一栏存了也会被 save_config 丢掉。补进默认值才能真的可配。
+    "maxFrames": 6,
 }
 
 
@@ -595,23 +714,68 @@ def rule_digest(title, text):
     return "\n".join(out)
 
 
+def split_question(line):
+    """模型给的疑问是一整行：「维度：问题 —— 触发 —— 已经知道 —— 还卡在哪」。
+    以前整行当卡名，22 字一刀砍下去标题就断了，正文里也只剩一句没头没尾的话。
+    现在拆开各归各位：问题当标题和队列条目，其余三段进正文当上下文。
+
+    dim 不给默认值：三张卡全都兜成「追问」，等于这个字段白存了 ——
+    认不出维度就明写「未标」，界面上看得出来，才知道要回去改提示词。"""
+    m = re.match(r"^(边界|证据|与我|待验证|反例|前提)\s*[：:]\s*(.+)$", line)
+    dim, rest = (m.group(1), m.group(2)) if m else ("未标", line)
+    parts = [p.strip() for p in re.split(r"\s*(?:——|—|｜|\|)\s*", rest) if p.strip()]
+    q = parts[0] if parts else rest.strip()
+    got = parts[1:]
+    # 只给了一段补充时，宁可当「触发」，也别硬凑成三段假上下文
+    trigger = got[0] if got else ""
+    known = got[1] if len(got) > 1 else ""
+    stuck = got[2] if len(got) > 2 else ""
+    return dim, q[:60], trigger[:160], known[:160], stuck[:160]
+
+
 def questions_from_digest(md):
-    """从消化稿的「## 我的疑问」里取出条目，变成待复习任务。"""
+    """从消化稿的「## 我的疑问」里取出条目，变成待复习任务。
+
+    队列里那条只留问题本身（+3 天到期时一眼读得完），上下文留在卡正文里。"""
     m = re.search(r"^##+\s*我的疑问\s*$\n(.*?)(?=^##+\s|\Z)", md or "", re.M | re.S)
     if not m:
         return []
     items = []
     for ln in m.group(1).splitlines():
         q = re.sub(r"^[-*\d.、\s]+", "", ln).strip()
-        if len(q) >= 6 and not q.startswith("（"):
-            items.append(q[:80])
+        _dim, question, *_rest = split_question(q)
+        if len(question) >= 6 and not question.startswith("（"):
+            items.append(question[:80])
     return items
 
 
-def append_review_tasks(questions, card_rel):
-    """疑问进 inbox/待复习任务.json；按标题去重，不动已完成的任务。"""
-    if not questions:
-        return 0
+def tags_from_digest(md):
+    """「## 主题标签」里的词才是这张库的标签；每行可以是 - 标签 或 顿号分隔。
+    模型写飞了（色值、标识符、状态词）由 clean_tags 拦掉，不靠提示词自觉。"""
+    m = re.search(r"^##+\s*主题标签\s*$\n(.*?)(?=^##+\s|\Z)", md or "", re.M | re.S)
+    if not m:
+        return []
+    raw = []
+    for ln in m.group(1).splitlines():
+        s = re.sub(r"^[-*\d.、\s]+", "", ln).strip()
+        if not s or s.startswith("（"):
+            continue
+        raw += re.split(r"[、,，;；|｜\s]+", s)
+    return clean_tags([t.strip("#:： ") for t in raw], limit=6)
+
+
+def append_review_tasks(questions, raw_rel, src=None, raw_chars=0):
+    """复习队列的两个入口（口径也写在首页「今天该复习」那一栏的说明里）：
+
+    1. **原料本身** —— 每消化一份原料排一条「重读这份原料」，到期 = 入库 +7 天。
+       你说「原料至少要在里面」，之前只有疑问进队列，原料页靠疑问间接出现，
+       一份没长出疑问的原料就等于永远不会再遇见。
+    2. **每条疑问** —— 一条疑问一个条目，到期 = 入库 +3 天。
+
+    `card` 指向那张问题卡（对不上就退回原料路径，条目一定要能打开），
+    `raw` 永远指向这份原料 —— 阅读页两路都算，所以原料页和问题卡页都不会看到空栏。
+    src 给平台 / 类型 / 出处，est_min 在入队那一刻算好，前端不再猜。"""
+    src = src or {}
     f = VAULT / "inbox" / "待复习任务.json"
     try:
         data = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
@@ -619,16 +783,40 @@ def append_review_tasks(questions, card_rel):
         data = {}
     tasks = data.get("tasks", [])
     have = {t.get("title") for t in tasks}
-    due = time.strftime("%Y-%m-%d", time.localtime(time.time() + 3 * 86400))
+    now = time.time()
+    day = lambda n: time.strftime("%Y-%m-%d", time.localtime(now + n * 86400))
+    mt = src.get("media_type") or "文本"
+    origin = src.get("title") or raw_rel
     added = 0
-    for q in questions:
-        title = "回看原文：" + q
-        if title in have:
-            continue
-        tasks.append({"title": title, "category": "消化提问", "priority": 3,
-                      "due": due, "card": card_rel})
-        have.add(title)
+
+    def push(item):
+        nonlocal added
+        if item["title"] in have:
+            return
+        tasks.append(item)
+        have.add(item["title"])
         added += 1
+
+    raw_title = "重读原料：" + origin
+    # 原料这一条的耗时直接沿用这份原料自己的 est_min（调用方刚算过），不在这里第二次折算
+    raw_est = as_int(src.get("est_min")) or est_minutes(raw_chars, mt, src.get("duration_ms"),
+                                                        images=src.get("images"))
+    push({"title": raw_title, "category": "原料重读", "priority": 2,
+          "due": day(7), "card": raw_rel, "raw": raw_rel,
+          "media_type": mt, "est_min": raw_est,
+          "platform": src.get("platform") or "本地", "origin": origin,
+          "url": src.get("url") or ""})
+
+    questions = [q for q in (questions or []) if str(q).strip()]
+    per = est_review_minutes(raw_chars, len(questions) or 1, mt)
+    for q in questions:
+        cp = find_card_file(card_name(q, maxlen=22)) or raw_rel
+        push({"title": "回看原文：" + q, "category": "消化提问", "priority": 3,
+              "due": day(3), "card": cp, "raw": raw_rel,
+              "media_type": mt, "est_min": per,
+              "platform": src.get("platform") or "本地", "origin": origin,
+              "url": src.get("url") or ""})
+
     if added:
         data["tasks"] = tasks
         data["generatedAt"] = time.strftime("%Y-%m-%d %H:%M")
@@ -652,17 +840,232 @@ def slugify(text, maxlen=24):
 CARD_DIR = {"concept": "wiki/concepts", "connection": "wiki/connections",
             "question": "wiki/questions"}
 CARD_LABEL = {"concept": "概念", "connection": "连接", "question": "问题"}
+
+# ---------------------------------------------------------------- 字段口径
+# 这一节是「内容输出规范」的代码化：状态、类型、预估时间、标签四个字段，
+# 每个只有一个合法值集合和一个归一函数，读的人（scan_vault）和写的人（write_card /
+# set_status / digest）都走同一个函数，所以页面、筛选、统计不会各说各话。
+
 STATUSES = ("未读", "已读", "待吃透", "待实践", "已内化")
 
-# 原料里的卡列表：全项目只有 render_card_section() 一个写入方，且每次重写而不是追加。
-# 之前 digest() 往消化稿正文里塞「## 本次长成的卡」、迁移脚本又在文末补
-# 「## 这张原料长成的卡」，两份同名不同序，看起来像同一段输出被生成了两次。
+# 库里出现过的历史写法。同义的一律并到一个值上，「意思相近的两个状态」就是这么来的。
+STATUS_ALIAS = {
+    "已消化": "已读", "消化过": "已读", "读完": "已读", "看过": "已读", "读毕": "已读",
+    "未消化": "未读", "没读": "未读", "待看": "未读", "待处理": "未读",
+    "待消化": "未读", "在读": "已读", "正在读": "已读",
+    "吃透": "待吃透", "待理解": "待吃透", "要吃透": "待吃透",
+    "待落地": "待实践", "要去用": "待实践", "待使用": "待实践",
+    "内化": "已内化", "已吸收": "已内化", "掌握了": "已内化",
+}
+
+# 复习流转只有原料和卡片参与
+STATUS_ALLOWED_KINDS = ("wiki", "raw")
+
+
+def norm_status(v):
+    """状态归一：只认 STATUSES 这五个值。
+    认不出来的（例如一整句话被写进了 status）返回空串 = 未填写，
+    原值另存在 status_raw，阅读页会提示这一条需要归一 —— 不猜、不编。"""
+    s = str(v or "").strip().strip("'\"")
+    if not s:
+        return ""
+    if s in STATUSES:
+        return s
+    if s in STATUS_ALIAS:
+        return STATUS_ALIAS[s]
+    for st in STATUSES:                       # 「已内化（能脱稿复述）」这种带尾巴的
+        if s.startswith(st):
+            return st
+    return ""
+
+
+MEDIA_TYPES = ("文本", "图文", "视频", "音频", "其他")
+
+# 阅读时长的常数。有出处的标明出处，没出处的直说是产品自定 —— 别拿 folklore 当依据：
+#   200 —— ngryman/reading-time 源码 wordsPerMinute=200，且注释写死「A CJK character is always
+#          a word」，即 1 汉字 = 1 词 ⇒ 中文 200 字/分。这是被用得最广的一份实现。
+#          （流传的「Medium 用 265 wpm」查不到一手来源，不用。）
+#   150 —— 卡片要能复述，比初读慢一档。**没有一手来源，是产品自定常数。**
+#   图片 —— @tryghost/helpers 的 reading-minutes：首图 12 秒，逐张 −1 秒，下限 3 秒。
+#   视频 / 音频 —— 直接取平台时长，逐字稿再按字数算一遍等于计两次。
+READING_CPM, READING_WPM = 200, 200
+CARD_CPM, CARD_WPM = 150, 150
+
+
+def image_seconds(n):
+    """首图 12 秒，之后每张递减 1 秒，下限 3 秒（Ghost 的实现）。"""
+    return sum(max(12 - i, 3) for i in range(max(0, int(n or 0))))
+
+
+def media_type_of(note_kind="", text="", has_media=False, method=""):
+    """内容形态：只由抓取结果决定，人不填。"""
+    nk = str(note_kind or "").strip().lower()
+    if nk == "video" or has_media:
+        return "视频"
+    if nk == "audio":
+        return "音频"
+    if nk == "image":
+        return "图文"
+    if re.search(r"!\[[^\]]*\]\(", text or ""):
+        return "图文"
+    if nk == "text":
+        return "文本"
+    if str(method or "") == "本地文件导入":
+        return "其他"
+    return "文本" if (text or "").strip() else "其他"
+
+
+def count_words(md):
+    """正文的「字数」：中文字符按字、拉丁词按词，和 est_minutes 用同一把尺。
+    先剥掉围栏代码 / 行内 code / 裸 URL / Markdown 语法字符 / 空白 —— 之前全站把
+    「整份 md 的字节数」当字数显示，frontmatter 和 `##` `|` `[[ ]]` 全算进去了，
+    一张两百字的薄卡能显示成四百多字，「还没长实」的判据因此从来没真的生效过。"""
+    t = strip_code(md)
+    t = re.sub(r"https?://\S+", " ", t)                          # 裸 URL 不是要读的字
+    t = re.sub(r"\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]", r"\1", t)      # 双链只算锚文字
+    t = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", t)                   # 图片标记不算字
+    t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)                # 链接只算锚文字
+    t = re.sub(r"[#>*_~`|=\-]{1,}", " ", t)                       # 语法字符
+    cjk, latin = read_units(t)
+    return cjk + latin
+
+
+def read_units(text):
+    """把一份文本拆成「按字读的中文」和「按词读的拉丁文」。
+    中英混排只按单一 cpm 折算会明显偏快：一个英文单词平均 5 个字符，按字符数等于把它当 5 个字读。"""
+    t = text or ""
+    latin = len(re.findall(r"[A-Za-z0-9_]+", t))
+    cjk = len(re.findall(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]", t))
+    return cjk, latin
+
+
+def est_minutes(chars=0, media_type="文本", duration_ms=0, is_card=False, images=0, text=""):
+    """预估多少分钟能读完这一份（向上取整，最少 1 分钟）。
+
+    视频 / 音频只取平台给的时长：逐字稿就是那段视频，字数再算一遍等于把同一内容计两次。
+    图片按 Ghost 的递减权重补秒数。常数出处见 skill/PROMPTS.md §6。"""
+    if media_type in ("视频", "音频") and duration_ms:
+        return max(1, int(round(duration_ms / 60000.0)))
+    slow = 0.8 if media_type == "图文" else 1.0
+    cpm = (CARD_CPM if is_card else READING_CPM) * slow
+    wpm = (CARD_WPM if is_card else READING_WPM) * slow
+    if text:
+        cjk, latin = read_units(text)
+        secs = cjk / float(cpm) * 60 + latin / float(wpm) * 60
+    else:
+        secs = max(0, int(chars or 0)) / float(cpm) * 60
+    secs += image_seconds(images)
+    return max(1, int(math.ceil(secs / 60.0)))
+
+
+def est_review_minutes(raw_chars, n_questions, media_type="文本"):
+    """一条复习条目几分钟：想起这道题 40 秒，再把原文里它那一段重读一遍。
+    「那一段」按原料长度平摊到各条疑问上 —— 只用手上有的字数，不猜内容。"""
+    n = max(1, int(n_questions or 1))
+    sec = 40 + (float(raw_chars or 0) / n) / READING_CPM * 60
+    if media_type in ("视频", "音频"):
+        sec += 90                     # 回看视频要拖进度条、看画面
+    return max(1, int(math.ceil(sec / 60.0)))
+
+
+def as_int(v, default=0):
+    try:
+        return int(float(str(v).strip()))
+    except Exception:
+        return default
+
+
+def guess_media_type(fm, kind):
+    """老原料没写 media_type 时按抓取留下的痕迹推：有本地视频或抽帧就是视频，
+    有图片或识字就是图文；卡片一律算文本（读的是卡片本身）。"""
+    if kind in ("concept", "connection", "question"):
+        return "文本"
+    if kind != "raw":
+        return ""
+    if str(fm.get("media", "")).strip() or as_int(fm.get("frames")) > 0:
+        return "视频"
+    if as_int(fm.get("ocr_images")) > 0 or as_int(fm.get("images")) > 0:
+        return "图文"
+    if str(fm.get("platform", "")) in ("抖音", "B站", "bilibili"):
+        return "视频"
+    return "文本"
+
+
+# 标签合法形态：短、能当筛选用。这些噪声是实测抓出来的：
+# 正文代码块里的 CSS 色值（#c4734a）、JS 标识符（#readBody）、
+# 状态词和维度词被当标签（#已读 #待实践 #边界 #追问）、处理日志（#消化生成 #手写）。
+TAG_MAX_LEN = 12
+TAG_STOPWORDS = {
+    "消化生成", "手写", "AI 代写", "追问", "并入", "原文未给出", "未命名", "待归位",
+    "批注", "高亮", "示例", "待补", "无",
+    "边界", "证据", "与我", "待验证", "反例", "前提",
+}
+TAG_STOPWORDS |= set(STATUSES)                       # 状态是状态，不是标签
+TAG_STOPWORDS |= {s for s in STATUS_ALIAS}
+TAG_HEX = re.compile(r"^[0-9a-fA-F]{3,8}$")
+# 逗号 / 冒号 / 引号会把 frontmatter 的 tags: [a, b] 流式列表撕开；# 是标签前缀本身
+TAG_BAD_CHARS = re.compile(r"[=/\\<>#&%$@`{}\[\]()|*~?,:;\"']")
+
+
+def norm_tag(t):
+    """Obsidian 的 tag 里不许有空白：中英混排常见的「AI 工具」折成「AI工具」，
+    而不是直接丢掉 —— 折一下还能用，丢掉等于把这个维度删了。"""
+    return re.sub(r"\s+", "", str(t or "").strip().lstrip("#").strip())
+# 平台名 / 来源字段值不是标签：它们已经活在 platform / source 字段里，写进标签就是同一件事说两遍
+TAG_STOPWORDS |= {"抖音", "知乎", "B站", "bilibili", "小红书", "公众号", "微信", "微博", "YouTube",
+                  "网页", "本地文件", "手动", "Instagram", "Facebook", "Twitter", "X"}
+
+
+def strip_code(text):
+    """去掉围栏代码块和行内 code：那里面出现的 #xxx 是代码，不是标签。"""
+    t = re.sub(r"```[^\n]*\n[\s\S]*?(```|$)", " ", str(text or ""))
+    return re.sub(r"`[^`\n]+`", " ", t)
+
+
+def tag_ok(t):
+    s = norm_tag(t)
+    if not s or len(s) > TAG_MAX_LEN:
+        return False
+    if TAG_HEX.match(s) and not re.search(r"[g-zG-Z]", s[1:]):   # 240 / abcdef 这种色值
+        return False
+    if re.fullmatch(r"[\d\W_]+", s):
+        return False
+    if TAG_BAD_CHARS.search(s):
+        return False
+    stop = {norm_tag(x) for x in TAG_STOPWORDS}
+    if s in stop or s.lower() in {x.lower() for x in stop}:
+        return False
+    if re.search(r"[a-z][A-Z]", s):            # camelCase 标识符
+        return False
+    return True
+
+
+def clean_tags(seq, limit=12):
+    """去重 + 归一 + 拦噪声；顺序按出现频次再按字母，保证筛选面板每次排一样。
+    Obsidian 的 tag 不区分大小写，所以「AI工具」和「ai工具」是同一个标签 —— 按小写归并，
+    拼写取出现次数最多的那一种，不然筛选栏里会并排出现两个只差大小写的芯片。"""
+    counts, spell = {}, {}
+    for t in seq or []:
+        s = norm_tag(t)
+        if not tag_ok(s):
+            continue
+        k = s.lower()
+        counts[k] = counts.get(k, 0) + 1
+        spell.setdefault(k, {})
+        spell[k][s] = spell[k].get(s, 0) + 1
+    picked = [(max(spell[k], key=lambda s: (spell[k][s], s)), counts[k]) for k in counts]
+    picked.sort(key=lambda x: (-x[1], x[0].lower()))
+    return [w for w, _n in picked][:limit]
+
+
+# 「这份原料长成了哪些卡」只由卡片的 from_raw 字段决定，正文里不再写第二份。
+# 老原料和模型自己 echo 出来的这两种小节标题，一律由 strip_card_sections() 剥掉。
 CARD_SECTION = "这张原料长成的卡"
 CARD_HEADING_RE = re.compile(r"^\s*#{2,4}\s*(?:本次长成的卡|%s)\b" % CARD_SECTION)
 
 
 def strip_card_sections(md):
-    """删掉文本里所有卡列表小节（含模型自己 echo 出来的那种），保证只剩一份。
+    """删掉文本里所有卡列表小节（含模型自己 echo 出来的那种）。
     连它上面那条 `---` 一起删，否则每重写一次就多一条分隔线。"""
     out, skipping = [], False
     for ln in (md or "").splitlines():
@@ -680,27 +1083,26 @@ def strip_card_sections(md):
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
-def render_card_section(made, dropped=()):
-    """这一份原料长成了哪些卡 —— 用编译后的真实卡名，不用模型的原文回声。"""
-    if not made and not dropped:
-        return ""
-    lines = ["", "---", "", "## %s" % CARD_SECTION]
-    merged = [(n, r) for k, n, r, s in made if s == "merged"]
-    merged_names = {n for n, _r in merged}
-    for kind in ("concept", "connection", "question"):
-        names = []
-        for k, n, _r, _s in made:
-            if k == kind and n not in merged_names and n not in names:
-                names.append(n)
-        if names:
-            lines.append("- %s：%s" % (CARD_LABEL[kind],
-                                       "、".join("[[%s]]" % n for n in names)))
-    if merged:
-        lines.append("- 并入已有卡（没另起同名近义卡）：%s"
-                     % "、".join("[[%s]]" % n for n, _r in merged))
-    if not made:
-        lines.append("- 这一份没长出卡（原文里的说法都只属于这一条，不构成知识块）")
-    return "\n".join(lines) + "\n"
+def _fm_set(text, kv):
+    """改 frontmatter 里的标量字段（有就替换，没有就插到结束线前面）。
+    frontmatter 的字段写入方只有这一个函数 + set_status/set_tags，避免各处各写一套正则。"""
+    if not text.startswith("---"):
+        return text
+    end = text.find("\n---", 3)
+    if end < 0:
+        return text
+    head = text[:end]
+    lines = head.split("\n")
+    for k, v in kv.items():
+        pat = re.compile(r"^%s:" % re.escape(k))
+        line = "%s: %s" % (k, v)
+        for i, ln in enumerate(lines[1:], 1):
+            if pat.match(ln):
+                lines[i] = line
+                break
+        else:
+            lines.insert(len(lines), line)
+    return "\n".join(lines) + text[end:]
 
 
 def section_of(md, name):
@@ -820,19 +1222,134 @@ def find_card_file(name):
     return None
 
 
-def append_to_card(name, blocks, src_title, url, platform, author):
+LINK_SYSTEM = """你在给刚入库的知识卡找它们该接上的旧卡。
+
+判据（三条全过才提，过不了就不提）：
+1. 两边讲的是**同一件事的因果、前后、矛盾、上下位或同结论不同路径** ——
+   不是「都提到 AI」「都在讲效率」这种话题相似；
+2. 关系用一句话说得清，这句话离开两张卡的正文也成立；
+3. 另一头的名字**必须**逐字来自我给的那份清单，不许自己造、不许改写、不许挑近义词凑。
+
+输出格式，不许有多余解释、不许标题、不许代码块：
+### 新卡的名称原文
+[[另一头的名称原文]] —— 关系词 —— 一句话说清为什么真的相关
+### 另一张新卡的名称原文
+无
+
+关系词只能用：前置 / 矛盾 / 同结论不同路径 / 上下位 / 互补 / 反例。
+一张新卡最多 3 条；接不上就在它下面写「无」。宁少勿滥：接错一条，全库图谱就多一条假边。
+"""
+
+
+PLACEHOLDER_HEAD = re.compile(r"^(?:本篇|本文|这一篇|这篇|这个|那条|该|这一|新)?[的以是]?"
+                              r"(?:主张|观点|看法|结论|说法|论点)[的以是]?[：:，,、]?\s*")
+
+
+def norm_head(s):
+    """比对卡名时把标点和空白全抹掉：模型爱在 ### 那行加《》或句号，逐字比就会漏掉一整段。"""
+    return re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "", str(s or "")).lower()
+
+
+def side_name(a):
+    """连接卡左半边：模型常写「本文主张 ↔ 旧卡」，得把那层指示词剥干净。
+    一次剥不净就循环剥 —— 「本文主张」先命中「本文」，剩下「主张」还得再削一刀，
+    否则卡名会长成「主张 与 某某」这种没有主语的东西。"""
+    s = str(a or "").strip()
+    for _ in range(3):
+        t = PLACEHOLDER_HEAD.sub("", s).strip(" ：:，,、《》\"'")
+        if t == s:
+            break
+        s = t
+    return s
+
+
+def link_cards(rels, max_per_card=3):
+    """新卡入库后回接库里：一次模型调用覆盖这一批，逐张挑真有关系的那几张，写进「接上的线」。
+
+    消化长出来的、一句话生成的、他自己手写的，都走这一条 —— 库里不该有孤立卡。
+    模型给的名字一律回到索引里核一遍，对不上的直接丢：宁可少接，也不造边。
+    返回 {新卡路径: [接上的卡名]}。"""
+    rels = [r for r in (rels or []) if r]
+    if not rels:
+        return {}
+    cards = scan_vault()
+    by_rel = {c["path"]: c for c in cards}
+    news = [by_rel[r] for r in rels if r in by_rel]
+    cands = [c for c in cards if c["path"] not in rels
+             and c["kind"] in ("concept", "connection", "question")]
+    if not news or not cands:
+        return {}
+    listing = "\n".join("- %s" % c["title"] for c in cands[:160])
+    brief = "\n\n".join("### %s\n类型：%s\n主张：%s" % (
+        c["title"], c["kind"],
+        re.sub(r"\s+", " ", c.get("summary") or "")[:180] or "（无摘要）") for c in news)
+    user = ("刚入库的新卡：\n\n%s\n\n可以接的已有卡（只能逐字从这份清单里挑）：\n%s"
+            % (brief, listing))
+    try:
+        out = call_deepseek(user, system=LINK_SYSTEM, max_tokens=1600)
+    except Exception:
+        return {}
+    by_title = {c["title"]: c for c in cands}
+    head_map = {norm_head(c["title"]): c for c in news}
+    result, current = {}, None
+    for ln in out.splitlines():
+        head = re.match(r"^#{1,4}\s*(.+?)\s*$", ln)
+        if head:
+            current = head_map.get(norm_head(head.group(1)))
+            continue
+        if not current or "接上的线" in ln:
+            continue
+        m = re.match(r"^\s*[-*]?\s*\[\[([^\]]+)\]\]\s*[—\-–]+\s*([^—\-–]+)\s*[—\-–]+\s*(.+)$", ln)
+        if not m:
+            continue
+        target, word, why = (x.strip() for x in m.groups())
+        hit = by_title.get(target) or next(
+            (c for c in cands if norm_head(c["title"]) == norm_head(target)), None)
+        if not hit or hit["path"] == current["path"]:
+            continue
+        bucket = result.setdefault(current["path"], [])
+        if any(b.startswith("[[%s]]" % hit["title"]) for b in bucket) or len(bucket) >= max_per_card:
+            continue
+        bucket.append("[[%s]] —— %s —— %s" % (hit["title"], word[:12], why[:120]))
+    for path, lines in list(result.items()):
+        if not lines:
+            del result[path]
+            continue
+        p = VAULT / path
+        if not p.is_file():
+            continue
+        head, body = _split_fm(p.read_text(encoding="utf-8"))
+        body = re.sub(r"\n*## 接上的线\n[\s\S]*$", "", body.rstrip("\n"))
+        body += "\n\n## 接上的线\n" + "".join("- %s\n" % l for l in lines)
+        p.write_text(head + body, encoding="utf-8")
+    return {k: [l.split(" —— ")[0].strip("[]") for l in v] for k, v in result.items()}
+
+
+def link_new_card(rel, max_links=3):
+    """单张卡（手写 / 一句话生成）的接线路径，复用上面那份批次实现。"""
+    return (link_cards([rel], max_per_card=max_links) or {}).get(rel, [])
+
+
+def _split_fm(text):
+    m = re.match(r"^(---\s*\n.*?\n---\s*\n?)", text, re.S)
+    return (m.group(1), text[m.end():]) if m else ("", text)
+
+
+def append_to_card(name, blocks, src_title, url, platform, author, meta=None):
     """把这篇追加进一张已有的概念页（跨来源累积），而不是另起一张近义卡。
     同一篇来源已经引过就不重复写；frontmatter 的 sources 会一路长下去。"""
     rel = find_card_file(name)
     if not rel:
-        return write_card("concept", name, blocks, src_title, url, platform, author)
+        return write_card("concept", name, blocks, src_title, url, platform, author, meta)
     p = VAULT / rel
     old = p.read_text(encoding="utf-8")
     if ("[[%s]]" % src_title) in old or ("来自《%s》" % src_title) in old:
         return rel, "exists"
     n_src = len(set(re.findall(r"来自《([^》]+)》", old)))
-    new = old.rstrip("\n") + "\n\n---\n\n## 补：来自《%s》（%s）\n\n%s\n" % (src_title, platform,
-                                                                            "\n".join(blocks))
+    new = _fm_fill_if_absent(old, {"media_type": (meta or {}).get("media_type") or "",
+                                   "from_raw": str((meta or {}).get("from_raw") or "").replace("\\", "/")})
+    new = new.rstrip("\n") + "\n\n---\n\n## 补：来自《%s》（%s）\n\n%s\n" % (src_title, platform,
+                                                                            strip_meta_echo("\n".join(blocks)))
     new = _add_source_to_frontmatter(new, "%s|%s" % (src_title, url or "本地"))
     p.write_text(new, encoding="utf-8")
     return rel, "merged"
@@ -865,35 +1382,103 @@ def _add_source_to_frontmatter(text, entry):
     return "\n".join(out) + text[end:]
 
 
-def write_card(kind, name, blocks, src_title, url, platform, author, extra_tags=None):
-    """建一张卡；同名已存在就追加一段，绝不覆盖原内容。"""
+# 卡片正文里不许让模型自己复述 frontmatter 已经记着的事实。它很爱在末尾补一行
+# 「出处：xxx（知乎）」，格式每轮都不一样，还常和 platform 拼出「（知乎）（知乎）」。
+# 剥掉之后由 write_card 统一补一行标准双链 —— 同一件事只有一种写法。
+META_ECHO_RE = re.compile(r"^\s*(?:出处|来源|原文链接|原始来源|出自)\s*[：:]")
+
+
+def strip_meta_echo(body):
+    """剥掉模型自己写的「出处：」「来源：」行 —— 出处只有一个写法（见 write_card 末尾）。
+    只认行首这几个词，正文里「用在哪：」「边界：」是卡片的维度，不能碰。"""
+    lines = [ln for ln in body.split("\n") if not META_ECHO_RE.match(ln)]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def q(v):
+    """frontmatter 的标量一律走这里。标题里出现「: 」、「#」、开头是 [ 或 { 都会把 YAML 撕开
+    （Obsidian 的实时校验会直接标红），而卡片标题就是自由文本。
+    YAML 1.2 的双引号转义和 JSON 基本同构，所以借用 json.dumps，不自己拼转义表。"""
+    return json.dumps(str("" if v is None else v), ensure_ascii=False)
+
+
+def tags_flow(tags):
+    return "[%s]" % ", ".join(q(t) for t in tags)
+
+
+def write_card(kind, name, blocks, src_title, url, platform, author, meta=None):
+    """建一张卡；同名已存在就追加一段，绝不覆盖原内容。
+
+    meta 是这篇原料的口径（内容输出规范 §2）：media_type / est_min / from_raw / duration_ms /
+    tags / dim。字段只在这里写一次，别处不再重复生成 —— 页面显示的「类型 · 预估 · 来源」
+    全部来自这几个字段。"""
+    meta = meta or {}
     rel = "%s/%s.md" % (CARD_DIR[kind], card_name(name))
     p = VAULT / rel
-    tags = ["消化生成"] + [t for t in (extra_tags or []) if t]
+    tags = clean_tags(meta.get("tags") or [])
+    mt = meta.get("media_type") or "文本"
+    card_text = "\n".join(blocks)
+    est = as_int(meta.get("est_min")) or est_minutes(count_words(card_text),
+                                                     mt, meta.get("duration_ms"),
+                                                     is_card=True, text=card_text)
+    extra = "dim: %s\n" % meta["dim"] if meta.get("dim") else ""
+    from_raw = str(meta.get("from_raw") or "").replace("\\", "/")
     head = "---\ntitle: %s\ntype: %s\nsource: %s\nplatform: %s\nauthor: %s\n" \
-           "captured_at: %s\nfrom: %s\nsources:\n  - \"%s|%s\"\nlevel: L1\nstatus: 待吃透\ntags: [%s]\n---\n\n" \
-           % (name, kind, url or "本地文件", platform, author,
-              time.strftime("%Y-%m-%d"), src_title,
-              src_title.replace('"', "'"), (url or "本地").replace('"', "'"), ", ".join(tags))
-    body = "\n".join(blocks)
+           "captured_at: %s\nfrom: %s\n%smedia_type: %s\nest_min: %d\n%ssources:\n  - %s\n" \
+           "status: %s\ntags: %s\n---\n\n" \
+           % (q(name), kind, q(url or "本地文件"), q(platform), q(author),
+              time.strftime("%Y-%m-%d"), q(src_title), extra, mt, est,
+              ("from_raw: %s\n" % from_raw if from_raw else ""),
+              q("%s|%s" % (src_title, url or "本地")),
+              meta.get("status") or "待吃透", tags_flow(tags))
+    body = strip_meta_echo("\n".join(blocks))
+    fill = {"from_raw": from_raw, "media_type": mt, "est_min": est}
     if p.exists():
         old = p.read_text(encoding="utf-8")
+        # 命中已有卡时也要补口径字段：老卡可能是上一版规范写的，没有 from_raw / media_type，
+        # 不补的话原料页的「长成的卡」会漏掉它，卡片行的「类型 · 预估」会是空的。
+        new = _fm_fill_if_absent(old, fill)
         if ("[[%s]]" % src_title) in old or ("来自《%s》" % src_title) in old:
+            if new != old:
+                p.write_text(new, encoding="utf-8")
             return rel, "exists"
-        p.write_text(old.rstrip("\n") + "\n\n---\n\n## 补：来自《%s》\n\n%s\n"
+        p.write_text(new.rstrip("\n") + "\n\n---\n\n## 补：来自《%s》\n\n%s\n"
                      % (src_title, body), encoding="utf-8")
         return rel, "appended"
+    # 出处由我们写、只写一次：模型爱在末尾补一行「出处：…（知乎）」，格式每轮不一样，
+    # 还常和 platform 拼出重复的「（知乎）（知乎）」。统一成一行标准双链，Obsidian 的图谱边也靠它。
+    if from_raw and src_title:
+        body += "\n\n出处：[[%s]]" % src_title
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(head + "# %s\n\n%s\n" % (name, body), encoding="utf-8")
     return rel, "created"
 
 
-def compile_cards(md, src_title, url, platform, author):
+def _fm_fill_if_absent(text, kv):
+    """只补 frontmatter 里根本没有的键，已有的值一个都不覆盖。
+    from_raw 是单值：一张卡可以来自多份原料，第一份占位，其余靠正文里的「出处」双链找回。"""
+    if not text.startswith("---"):
+        return text
+    end = text.find("\n---", 3)
+    if end < 0:
+        return text
+    head, rest = text[:end], text[end:]
+    have = set(re.findall(r"^([A-Za-z_][\w-]*)\s*:", head, flags=re.M))
+    add = dict((k, v) for k, v in kv.items() if k not in have and str(v or "").strip())
+    return (_fm_set(head, add) + rest) if add else text
+
+
+def compile_cards(md, src_title, url, platform, author, meta=None):
     """把消化稿的三段候选编译成卡，返回 ([(kind, 卡名, 路径, 状态)], [被拦下的说明])。
+
+    meta 是这篇原料的口径（media_type / est_min / from_raw / tags / duration_ms），
+    会原样落到每张卡片的 frontmatter —— 「这张卡是什么类型、大概读几分钟、从哪份原料来」
+    在生成那一刻就定下来，之后前端只读不猜。
 
     数量和准入是硬闸门：一次消化最多 3 概念 / 2 连接 / 3 问题，互动数据一律不成卡，
     连接必须接到库里已有的卡上。「每条内容都长出十几张卡」正是这个库要治的病（见 [[双链滥用症]]）。
     """
+    meta = dict(meta or {})
     made, dropped = [], []
     src_link = "[[%s]]" % src_title
     known = existing_card_names()
@@ -960,6 +1545,7 @@ def compile_cards(md, src_title, url, platform, author):
         if mm:
             merge_into = mm.group(1).strip()
             line = line[mm.end():].lstrip(" ——｜|")
+        line, tags_txt = cut(line, "标签")
         line, use = cut(line, "用在哪")
         line, why = cut(line, "为什么成立")
         line, edge = cut(line, "边界")
@@ -972,11 +1558,20 @@ def compile_cards(md, src_title, url, platform, author):
             continue
         name, gloss = split_gloss(line)
         name = card_name(name, maxlen=30)
-        if len(name) < 4:
+        # 卡名是一句主张，不是一个词：少于 8 字基本是被截断的从句（真出过「摘要可以照抄」）
+        if len(name) < 8:
+            dropped.append("概念「%s」只有 %d 字，不像一句能独立成立的主张 → 没建卡，"
+                           "写成「什么在什么条件下不成立」那样的完整句子再来" % (name, len(name)))
             continue
         if is_meta(name):     # 只看名字：正解释里引用「1 亿播放量」是允许的，那不代表这张卡是数据卡
             dropped.append("概念「%s」是互动数据 / 项目身份 / 技术规格，不是知识 → 没建卡" % name)
             continue
+        # 标签按这张卡自己的主题给；模型没给才退回整份原料那一批 ——
+        # 之前是一份原料一套标签发到所有卡上，等于「这批货哪来的」而不是「这条主张讲什么」
+        cmeta = dict(meta)
+        own = clean_tags(re.split(r"[、,，;；\s]+", tags_txt or ""), limit=4)
+        if own:
+            cmeta["tags"] = own
         target = (match_concept(merge_into) if merge_into else None) or None
         if not target and not merge_into:
             target = match_concept(name)   # 模型没写「并入」但起了个近义名，也当回填处理
@@ -984,14 +1579,13 @@ def compile_cards(md, src_title, url, platform, author):
         blocks += ["**为什么成立**：%s" % (why or "（这篇没给依据 —— 要么你补上，要么这张卡该删）"), ""]
         blocks += ["**边界**：%s" % (edge or "（说不清什么条件下不成立 —— 那它还不是知识，先当你自己的疑问处理）"), ""]
         blocks += ["用在哪：%s" % (card_name(use, maxlen=40) if use else "（说不出来就别留这张卡）"),
-                   "", "这是模型的口径，**用自己的话重写它，才算进过你的库**。",
-                   "", "出处：%s（%s）" % (src_link, platform)]
+                   "", "这是模型的口径，**用自己的话重写它，才算进过你的库**。"]
         if target:
-            rel, state = append_to_card(target, blocks, src_title, url, platform, author)
+            rel, state = append_to_card(target, blocks, src_title, url, platform, author, cmeta)
             made.append(("concept", target) + (rel, state))
             continue
         made.append(("concept", name) + write_card(
-            "concept", name, blocks, src_title, url, platform, author))
+            "concept", name, blocks, src_title, url, platform, author, cmeta))
         known.append(name)          # 空库第一条也得能连起来：本次新建的卡同样是锚点
 
     for line in bullets(section_of(md, "连接候选"))[:2]:
@@ -1005,8 +1599,8 @@ def compile_cards(md, src_title, url, platform, author):
                            % (card_name(a, maxlen=14), card_name(b, maxlen=14)))
             continue
         # 模型有时把左边写成「本篇 / 本文 / 这个主张」这种占位词 —— 换成真的说法
-        side = card_name(re.sub(r"^(本篇|本文|这一篇|这个主张|该主张|这一主张|主张|新观点)[的以是]?", "", a), maxlen=16)
-        if len(side) < 2 or side == "未命名":
+        side = card_name(side_name(a), maxlen=16)
+        if len(side) < 4 or side == "未命名":
             own = [n for k, n, _r, _s in made if k == "concept"]
             side = own[0] if own else card_name(src_title, maxlen=16)
         # 两边各自留预算，别让 card_name 从右往左砍掉 —— 曾经砍到只剩左半边，
@@ -1014,21 +1608,27 @@ def compile_cards(md, src_title, url, platform, author):
         name = card_name("%s 与 %s" % (card_name(side, maxlen=14),
                                        card_name(anchor, maxlen=20)), maxlen=38)
         blocks = ["%s ↔ [[%s]]：%s" % (side, anchor, rel_desc),
-                  "", "一侧是这篇的新主张，另一头接的是库里已经想明白的东西 —— 接不上就不该是张卡。",
-                  "", "出处：%s（%s）" % (src_link, platform)]
+                  "", "一侧是这篇的新主张，另一头接的是库里已经想明白的东西 —— 接不上就不该是张卡。"]
         made.append(("connection", name) + write_card(
-            "connection", name, blocks, src_title, url, platform, author))
+            "connection", name, blocks, src_title, url, platform, author, meta))
 
     for line in bullets(section_of(md, "我的疑问"))[:3]:
-        m = re.match(r"^(边界|证据|与我|待验证|反例|前提)\s*[：:]\s*(.+)$", line)
-        dim, q = (m.group(1), m.group(2)) if m else ("追问", line)
+        dim, q, trigger, known, stuck = split_question(line)
         name = card_name(q, maxlen=22)
         if len(name) < 4:
             continue
-        blocks = ["> %s" % q, "", "现在还没答案。写得出「什么算想通了」，这道题才算你的：", "",
-                  "- [ ] 判定标准：", "", "出处：%s（%s）" % (src_link, platform)]
+        # 问题卡的价值全在上下文：光一句问句，三个月后回来根本想不起在问什么。
+        # 六段固定 —— 问题 / 触发 / 已经知道 / 目前的猜测 / 判定标准 / 下一步要什么材料。
+        blocks = ["> %s" % q,
+                  "", "**是什么让我问出这句**：%s" % (trigger or "（模型没给，等你自己补一句）"),
+                  "", "**我已经知道什么**：%s" % (known or "无"),
+                  "", "**目前的猜测**：%s" % (stuck or "还没有"),
+                  "", "**什么算想通了**（勾得动这条，这道题才算答过）：", "", "- [ ] 判定标准：",
+                  "", "**下一步要什么材料**：（要查什么 / 再丢哪条链接进来）"]
+        qmeta = dict(meta)
+        qmeta["dim"] = dim          # 维度进 dim 字段，不进 tags：标签是主题，不是处理步骤
         made.append(("question", name) + write_card(
-            "question", name, blocks, src_title, url, platform, author, extra_tags=[dim]))
+            "question", name, blocks, src_title, url, platform, author, qmeta))
 
     return made, dropped
 
@@ -1119,7 +1719,10 @@ class Handler(BaseHTTPRequestHandler):
         ctype = {".html": "text/html; charset=utf-8",
                  ".css": "text/css; charset=utf-8",
                  ".js": "application/javascript; charset=utf-8",
-                 ".svg": "image/svg+xml"}.get(f.suffix, "application/octet-stream")
+                 ".svg": "image/svg+xml",
+                 # 皮肤里的 IP 姿态图在 static/ip/ 下，之前一律回 octet-stream
+                 ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".webp": "image/webp", ".gif": "image/gif"}.get(f.suffix, "application/octet-stream")
         self._send(200, f.read_bytes(), ctype)
 
     def api(self, path, qs):
@@ -1135,7 +1738,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/search":
                 return self._json({"results": self.search(qs.get("q", [""])[0])})
             if path == "/api/tasks":
-                return self._json({"tasks": self.tasks()})
+                return self._json({"tasks": self.tasks(), "log": self.done_log()})
             if path == "/api/config":
                 import fetchers
                 return self._json(dict(masked_config(),
@@ -1154,13 +1757,17 @@ class Handler(BaseHTTPRequestHandler):
         tasks = self.tasks()
         today = time.strftime("%Y-%m-%d")
         due = [t for t in tasks if not t.get("done") and t.get("due", "") <= today]
-        tags = {}
+        tags, spell = {}, {}
         for c in cards:
             for t in c["tags"]:
-                tags[t] = tags.get(t, 0) + 1
+                k = str(t).lower()          # Obsidian 的标签不分大小写，归并成一格
+                tags[k] = tags.get(k, 0) + 1
+                spell.setdefault(k, {})
+                spell[k][t] = spell[k].get(t, 0) + 1
+        named = [(max(spell[k], key=lambda s: (spell[k][s], s)), n) for k, n in tags.items()]
         return {"vault": str(VAULT), "total": len(cards), "byKind": by_kind,
                 "tasksTotal": len(tasks), "tasksDue": len(due),
-                "topTags": sorted(tags.items(), key=lambda x: -x[1])[:12]}
+                "topTags": sorted(named, key=lambda x: -x[1])[:12]}
 
     def card(self, rel):
         p = (VAULT / rel).resolve()
@@ -1169,10 +1776,18 @@ class Handler(BaseHTTPRequestHandler):
         text = p.read_text(encoding="utf-8", errors="replace")
         fm, body = parse_frontmatter(text)
         cards = scan_vault()
+        # 反链要认全：[[双链]] 里写的多半是标题或别名，不是文件名
+        # （只按 stem 匹配的话，卡片里那句「出处：[[原料标题]]」永远数不到原料头上）
+        names = {p.stem, p.name[:-3], str(fm.get("title") or "")}
+        al = fm.get("aliases") or fm.get("alias") or []
+        if isinstance(al, str):
+            al = [al]
+        names |= {str(a).strip() for a in al if str(a).strip()}
+        names.discard("")
         backlinks = [{"path": c["path"], "title": c["title"]}
-                     for c in cards if p.stem in c["links"] or p.name[:-3] in c["links"]]
+                     for c in cards if names & set(c.get("links") or [])]
         return {"path": rel, "frontmatter": fm, "body": body, "raw": text,
-                "backlinks": backlinks}
+                "linkNames": sorted(names), "backlinks": backlinks}
 
     def search(self, q):
         q = (q or "").strip()
@@ -1215,6 +1830,28 @@ class Handler(BaseHTTPRequestHandler):
             t["done"] = t.get("title") in done
         return tasks
 
+    def done_log(self):
+        """「什么时候勾掉的」只有完成记录里才有，仪表盘「近期已完成」要靠它。
+        done 仍是纯标题列表（别的脚本在读），日期另开一个 log 数组，两边一起写。"""
+        f = VAULT / "inbox" / "已完成任务.json"
+        if not f.is_file():
+            return []
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        log = data.get("log") or []
+        out = []
+        for it in log:
+            if isinstance(it, dict) and it.get("title"):
+                out.append({"title": it["title"], "at": it.get("at", "")})
+        titles = {t["title"] for t in out}
+        for title in (data.get("done") or []):
+            if isinstance(title, str) and title and title not in titles:
+                out.append({"title": title, "at": ""})
+        out.sort(key=lambda x: x["at"], reverse=True)
+        return out[:60]
+
     # ------------------------------------------------------------ POST
     def do_POST(self):
         u = urlparse(self.path)
@@ -1235,6 +1872,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(self.set_status(body))
             if u.path == "/api/card/add":
                 return self._json(self.add_card(body))
+            if u.path == "/api/card/generate":
+                return self._json(self.gen_card(body))
+            if u.path == "/api/card/tags":
+                return self._json(self.set_tags(body))
             if u.path == "/api/task/done":
                 return self._json(self.task_done(body))
             if u.path == "/api/save":
@@ -1250,6 +1891,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(masked_config())
             if u.path == "/api/llm/test":
                 return self._json(self.llm_test())
+            if u.path == "/api/summary":
+                return self._json(self.study_summary(body))
             if u.path == "/api/fetch":
                 return self._json(self.preview_fetch(body))
             if u.path == "/api/cookie":
@@ -1299,6 +1942,7 @@ class Handler(BaseHTTPRequestHandler):
                          "platform": info.get("platform", "网页"), "url": info.get("url", url),
                          "text": info.get("text", ""), "method": info.get("method", ""),
                          "media": info.get("media", ""),
+                         "duration_ms": info.get("duration_ms", 0),
                          "note_kind": info.get("note_kind", "")})
 
         if not (meta["text"] or "").strip():
@@ -1366,56 +2010,79 @@ class Handler(BaseHTTPRequestHandler):
             note = (note + " " if note else "") + "未做 AI 提炼（%s）→ 已用规则抽取兜底" % e
 
         # 5) 编译成三层卡（只有 AI 提炼成功才建；规则兜底那四条固定疑问不该变成卡）
-        made, dropped = [], []
-        if body.get("compile", True) and ai_used:
-            made, dropped = compile_cards(md, title, meta["url"], meta["platform"],
-                                          meta["author"] or "未知")
-            if not made:
-                note = (note + " " if note else "") + "消化稿里没解析出可用的候选，未建卡"
-            if dropped:
-                note = (note + " " if note else "") + "拦下 %d 条不该成卡的" % len(dropped)
-        # 卡列表只由 render_card_section 写一次；模型自己 echo 的同名小节先剥掉。
-        md = strip_card_sections(md)
-        cards_md = render_card_section(made, dropped)
-
-        # 6) 写原料（只增不改）
+        media_type = media_type_of(meta.get("note_kind"), meta["text"],
+                                   bool(meta.get("media")), meta["method"])
+        dur_ms = as_int(meta.get("duration_ms"))
+        # 原料的目标路径先定下来：卡片的 from_raw 要指它。
+        # 「这份原料长成了哪些卡」从此只有这一个来源 —— 前端按 from_raw 算，正文里不写第二份。
         clip = VAULT / "raw" / "clips" / ("%s-%s.md" % (today, base))
-        clip.parent.mkdir(parents=True, exist_ok=True)
         n = 1
         while clip.exists():
             clip = VAULT / "raw" / "clips" / ("%s-%s-%d.md" % (today, base, n))
             n += 1
+        rel = str(clip.relative_to(VAULT)).replace("\\", "/")
+
+        md = strip_card_sections(md)
+        card_meta = {"media_type": media_type, "duration_ms": dur_ms,
+                    "from_raw": rel, "tags": tags_from_digest(md)}
+        made, dropped = [], []
+        if body.get("compile", True) and ai_used:
+            made, dropped = compile_cards(md, title, meta["url"], meta["platform"],
+                                          meta["author"] or "未知", card_meta)
+            if not made:
+                note = (note + " " if note else "") + "消化稿里没解析出可用的候选，未建卡"
+            if dropped:
+                note = (note + " " if note else "") + "拦下 %d 条不该成卡的" % len(dropped)
+
+        # 6) 写原料（只增不改）
+        clip.parent.mkdir(parents=True, exist_ok=True)
         original = meta["text"][:60000]
         for extra in (ocr_blk, frame_blk):
             if extra:
                 original += "\n\n" + extra
         media_rel = "media: %s\n" % meta.get("media") if meta.get("media") else ""
+        dur_rel = "duration_ms: %d\n" % dur_ms if dur_ms else ""
+        est_src = est_minutes(count_words(original + "\n" + md), media_type, dur_ms,
+                              images=imgs, text=original + "\n" + md)
+        card_meta["est_min"] = est_src
         clip.write_text(
-            "---\ntitle: %s\naliases:\n  - \"%s\"\nsource: %s\nplatform: %s\nauthor: %s\n"
-            "captured_at: %s\nmethod: %s\nimages: %d\nocr_images: %d\nframes: %d\n%slevel: L1\nstatus: 已读\n---\n\n"
-            "# %s\n\n> 来源：%s ｜ 平台：%s ｜ 作者：%s ｜ 图片：%d 张%s\n\n"
+            "---\ntitle: %s\naliases:\n  - \"%s\"\ntype: raw\nsource: %s\nplatform: %s\nauthor: %s\n"
+            "captured_at: %s\nmethod: %s\nimages: %d\nocr_images: %d\nframes: %d\n%s%s"
+            "media_type: %s\nest_min: %d\nstatus: 未读\n---\n\n"
+            "# %s\n\n> 来源：%s ｜ 平台：%s ｜ 作者：%s ｜ 类型：%s ｜ 预估 %d 分钟\n\n"
             "# 原文（抓取所得，未加工）\n\n%s\n\n---\n\n"
             "# 消化稿（模型提炼，属于衍生内容）\n\n"
-            "> 下面这一节不是作者原话，是处理结果；要引用请以「原文」一节为准。\n\n%s\n%s"
+            "> 下面这一节不是作者原话，是处理结果；要引用请以「原文」一节为准。\n\n%s\n"
             % (title, title.replace('"', "'"), meta["url"], meta["platform"], meta["author"] or "未知",
-               time.strftime("%Y-%m-%d"), meta["method"], imgs, ocr_n, frame_n, media_rel,
-               title, meta["url"], meta["platform"], meta["author"] or "未知", imgs,
-               "，其中 %d 张已识字" % ocr_n if ocr_blk else "",
-               original, md, cards_md),
+               time.strftime("%Y-%m-%d"), meta["method"], imgs, ocr_n, frame_n, media_rel, dur_rel,
+               media_type, est_src,
+               title, meta["url"], meta["platform"], meta["author"] or "未知",
+               media_type, est_src, original, md),
             encoding="utf-8")
 
         # 7) 消化出来的疑问自动进「待复习」队列（勾选仍需先打开原文）
-        rel = str(clip.relative_to(VAULT)).replace("\\", "/")
-        asked = append_review_tasks(questions_from_digest(md), rel)
+        qs = questions_from_digest(md)
+        asked = append_review_tasks(qs, rel,
+                                    {"media_type": media_type, "platform": meta["platform"],
+                                     "url": meta["url"], "title": title,
+                                     "est_min": est_src, "duration_ms": dur_ms, "images": imgs},
+                                    raw_chars=len(original))
+        if ai_used and not qs:
+            note = (note + " " if note else "") + "这份消化稿没写「我的疑问」，复习队列里不会有条目"
+
+        # 8) 回接库里：一次调用覆盖这一批新卡，把接得上的写进各自的「接上的线」。
+        #    连接候选要另一头已经在库里才建得出卡，空库前几条永远连不上 —— 这一步补的就是那个洞。
+        linked = link_cards([r for _k, _n, r, s in made if s == "created"])
 
         return {"ok": True, "clip": rel,
                 "title": title, "platform": meta["platform"],
                 "kind": meta.get("note_kind", ""),
+                "media_type": media_type, "est_min": est_src,
                 "method": meta["method"], "digest": md, "images": imgs,
                 "ocrImages": ocr_n if ocr_blk else 0,
                 "frames": frame_n if frame_blk else 0,
                 "questions": asked, "chars": len(meta["text"]), "note": note,
-                "dropped": dropped,
+                "dropped": dropped, "linked": linked,
                 "cards": [{"kind": k, "label": CARD_LABEL[k], "name": n,
                            "path": r, "state": s} for k, n, r, s in made]}
 
@@ -1465,6 +2132,10 @@ class Handler(BaseHTTPRequestHandler):
         url = fm.get("source") or fm.get("url") or ""
         platform = fm.get("platform") or "网页"
         author = fm.get("author") or "未知"
+        media_type = str(fm.get("media_type") or "").strip()
+        if media_type not in MEDIA_TYPES:
+            media_type = guess_media_type(fm, "raw")
+        dur_ms = as_int(fm.get("duration_ms"))
 
         note = ""
         try:
@@ -1476,14 +2147,20 @@ class Handler(BaseHTTPRequestHandler):
                     "error": "重新消化失败：%s" % str(e)[:160],
                     "hint": "原文已保存，没有动过；改一下「模型配置」或把过长的图片说明删掉再试"}
 
+        md = strip_card_sections(md)
+        est_src = est_minutes(count_words(raw + "\n" + md), media_type, dur_ms,
+                              text=raw + "\n" + md)
+        card_meta = {"media_type": media_type, "duration_ms": dur_ms, "est_min": est_src,
+                     "from_raw": rel, "tags": tags_from_digest(md)}
         made, dropped = [], []
         if body.get("compile", True):
-            made, dropped = compile_cards(md, title, url, platform, author)
+            made, dropped = compile_cards(md, title, url, platform, author, card_meta)
             note = ("重新长出 %d 张卡" % len(made)) if made \
                 else "消化稿重写了，但没解析出可建卡的候选"
             if dropped:
                 note += "，拦下 %d 条" % len(dropped)
-        md = strip_card_sections(md)
+        if not questions_from_digest(md):
+            note = (note + " " if note else "") + "这份消化稿没写「我的疑问」，复习队列里不会多出条目"
 
         stamp = time.strftime("%Y-%m-%d %H:%M")
         backup = ""
@@ -1495,16 +2172,23 @@ class Handler(BaseHTTPRequestHandler):
             backup = str(bak.relative_to(VAULT)).replace("\\", "/")
         digest_section = ("# 消化稿（模型提炼，属于衍生内容）\n\n"
                           "> 下面这一节不是作者原话，是处理结果；要引用请以「原文」一节为准。\n"
-                          "> 最近一次重生成：%s\n\n%s\n%s"
-                          % (stamp, md, render_card_section(made, dropped)))
-        p.write_text(strip_card_sections(head).rstrip("\n") + "\n\n---\n\n"
-                     + digest_section, encoding="utf-8")
+                          "> 最近一次重生成：%s\n\n%s\n"
+                          % (stamp, md))
+        p.write_text(_fm_set(strip_card_sections(head),
+                             {"media_type": media_type, "est_min": est_src}).rstrip("\n")
+                     + "\n\n---\n\n" + digest_section, encoding="utf-8")
 
-        asked = append_review_tasks(questions_from_digest(md), rel)
+        asked = append_review_tasks(questions_from_digest(md), rel,
+                                    {"media_type": media_type, "platform": platform,
+                                     "url": url, "title": title, "est_min": est_src,
+                                     "duration_ms": dur_ms}, raw_chars=len(raw))
+        linked = link_cards([r for _k, _n, r, s in made if s == "created"])
         return {"ok": True, "clip": rel, "title": title, "digest": md,
+                "media_type": media_type, "est_min": est_src,
                 "cards": [{"kind": k, "label": CARD_LABEL[k], "name": n,
                            "path": r, "state": s} for k, n, r, s in made],
                 "dropped": dropped, "questions": asked, "note": note,
+                "linked": linked,
                 "backup": backup, "chars": len(raw)}
 
     def recompile(self, body):
@@ -1522,17 +2206,28 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": False, "error": "这一份还没有消化稿，只能先「按原文重新生成」（那一步要调模型）"}
         fm, _rest = parse_frontmatter(s)
         title = (fm.get("title") or p.stem).strip()
+        media_type = str(fm.get("media_type") or "").strip()
+        if media_type not in MEDIA_TYPES:
+            media_type = guess_media_type(fm, "raw")
+        est_src = as_int(fm.get("est_min")) or est_minutes(count_words(s), media_type,
+                                                           as_int(fm.get("duration_ms")), text=s)
         digest = strip_card_sections(digest)
         made, dropped = compile_cards(digest, title, fm.get("source") or "",
-                                      fm.get("platform") or "网页", fm.get("author") or "未知")
+                                      fm.get("platform") or "网页", fm.get("author") or "未知",
+                                      {"media_type": media_type, "est_min": est_src,
+                                       "duration_ms": as_int(fm.get("duration_ms")),
+                                       "from_raw": rel, "tags": tags_from_digest(digest)})
         if not made and not dropped:
-            # 消化稿里没有可编译的候选（比如只有核心观点）—— 那就一个字都不动，
-            # 否则会把这份原料原有的卡列表抹掉
+            # 消化稿里没有可编译的候选（比如只有核心观点）—— 那就一个字都不动
             return {"ok": True, "clip": rel, "title": title, "cards": [], "dropped": [],
-                    "questions": 0, "note": "这份消化稿里没有可编译的候选，卡片和卡列表都没动"}
-        p.write_text(head.rstrip("\n") + "\n\n---\n\n" + digest.rstrip("\n") + "\n"
-                     + render_card_section(made, dropped), encoding="utf-8")
-        asked = append_review_tasks(questions_from_digest(digest), rel)
+                    "questions": 0, "note": "这份消化稿里没有可编译的候选，卡片没动"}
+        p.write_text(head.rstrip("\n") + "\n\n---\n\n" + digest.rstrip("\n") + "\n",
+                     encoding="utf-8")
+        asked = append_review_tasks(questions_from_digest(digest), rel,
+                                    {"media_type": media_type, "platform": fm.get("platform") or "网页",
+                                     "url": fm.get("source") or "", "title": title,
+                                     "est_min": est_src, "duration_ms": as_int(fm.get("duration_ms"))},
+                                    raw_chars=len(self._raw_body(head)))
         return {"ok": True, "clip": rel, "title": title,
                 "cards": [{"kind": k, "label": CARD_LABEL[k], "name": n,
                            "path": r, "state": st} for k, n, r, st in made],
@@ -1556,9 +2251,20 @@ class Handler(BaseHTTPRequestHandler):
             src_title, url = fm.get("title") or sp.stem, fm.get("source") or ""
             platform, author = fm.get("platform") or "本地", fm.get("author") or "未知"
             src_link = "[[%s]]" % src_title
+            mt = str(fm.get("media_type") or "").strip()
+            if mt not in MEDIA_TYPES:
+                mt = guess_media_type(fm, kind_of(src_rel, fm))
+            card_meta = {"media_type": mt, "est_min": as_int(fm.get("est_min")),
+                         "duration_ms": as_int(fm.get("duration_ms")),
+                         # 只有原料才写 from_raw：挂在概念卡下面的新卡靠那句「出处」双链，
+                         # 不然侧栏「这张原料长成的卡」里会混进非原料的东西
+                         "from_raw": src_rel if src_rel.startswith("raw/") else "",
+                         "tags": clean_tags(body.get("tags") or [], limit=6)}
         else:
             src_title, url = (body.get("from") or "手动添加").strip(), ""
             platform, author, src_link = "手动", "本人", ""
+            card_meta = {"media_type": "文本", "from_raw": "",
+                         "tags": clean_tags(body.get("tags") or [], limit=6)}
 
         text = (body.get("text") or "").strip()
         lines = [l for l in text.splitlines() if l.strip()] or ["（先写一句话，回头再补）"]
@@ -1582,14 +2288,82 @@ class Handler(BaseHTTPRequestHandler):
         else:
             blocks = ["> %s" % lines[0]] + ([""] + lines[1:] if len(lines) > 1 else [])
             blocks += ["", "用在哪：%s" % ((body.get("use") or "").strip() or "（说不出来就先别留这张卡）")]
-        if src_link:
-            blocks += ["", "出处：%s（%s）" % (src_link, platform)]
-        blocks += ["", "（这张是我自己写的，不是模型口径。）"]
+        # 出处只留一行：write_card 在 from_raw 存在时已经会补标准双链，这里再补就是同一件事两遍
+        if src_link and not card_meta.get("from_raw"):
+            blocks += ["", "出处：%s" % src_link]
+        blocks += ["", "（这张是我自己写的，不是模型口径。）" if not body.get("ai")
+                   else "（这张是按我的一句话让模型补的，口径要我自己核。）"]
 
-        rel, state = write_card(kind, name, blocks, src_title, url, platform, author,
-                                extra_tags=["手写"])
+        rel, state = write_card(kind, name, blocks, src_title, url, platform, author, card_meta)
+        linked = []
+        if body.get("link", True):
+            # 手写卡和 AI 生成的卡走同一条接线路：库里不该躺着孤立卡
+            linked = link_new_card(rel)
         return {"ok": True, "path": rel, "name": name, "state": state,
-                "kind": kind, "label": CARD_LABEL[kind]}
+                "kind": kind, "label": CARD_LABEL[kind], "meta": card_meta,
+                "linked": linked}
+
+    CARD_ASK = {
+        "concept": "写一张概念卡：一句能独立成立的主张 + 为什么成立 + 边界 + 用在哪。",
+        "connection": "写一张连接卡：把用户提到的东西接到库里已有的一张卡上，写清在什么情况下相互影响。",
+        "question": "写一张问题卡：一个还没想清楚的问题 + 为什么值得问 + 已有线索 + 怎么判定想通了。",
+    }
+
+    def gen_card(self, body):
+        """只给一句提示词，让模型按本库的卡片格式补一张卡，走的还是 add_card 那套命名和落盘规则。"""
+        kind = (body.get("kind") or "").strip()
+        if kind not in CARD_LABEL:
+            return {"ok": False, "error": "kind 只能是 concept / connection / question"}
+        ask = (body.get("prompt") or "").strip()
+        if len(ask) < 2:
+            return {"ok": False, "error": "先写一句想让模型补什么（例如：爬虫这个词，结合这篇讲讲）"}
+        src_rel = (body.get("source") or "").strip().replace("\\", "/")
+        sp = (VAULT / src_rel).resolve() if src_rel else None
+        if sp is not None and not str(sp).startswith(str(VAULT.resolve())):
+            sp = None
+        excerpt = ""
+        if sp is not None and sp.is_file():
+            excerpt = fit_content(sp.read_text(encoding="utf-8", errors="replace"), 6000)
+        anchors = "、".join(existing_card_names(60))
+        system = (
+            "你在给一个个人知识库补一张卡。" + self.CARD_ASK[kind] + "\n"
+            "硬性要求：\n"
+            "1. 只输出四段，第一行「卡名：」开头（8–25 字的一句主谓句，读一遍就能同意或反对；"
+            "不写光杆名词、不写「关于…的思考」、不写被截断的从句）；"
+            "第二行「正文：」开头（≤260 字，中文，写给三个月后的自己看）；"
+            "第三行「用在哪：」开头（一句话，说不清就写「暂不确定」）；"
+            "第四行「标签：」开头（2-4 个主题词，顿号分隔）。\n"
+            "2. 不许编造：材料里没有的事实、数字、产品名一律不写；写不出的部分直说「材料未给出」。\n"
+            "3. 概念卡只装一条主张，且要能脱离这篇内容单独成立；连接卡必须写成「A ↔ [[已有卡名]]」，"
+            "另一头只能从给定的卡名里挑；问题卡合上材料也答得出，并给出可判定的「什么算想通了」。\n"
+            "4. 标签只能是主题（能用它把一堆卡筛出来），不许写状态词、维度词、人名、"
+            "产品名、平台名、数字，也不许写代码里的词；每个词不超过 12 字，不含 # 和空格。\n"
+            "5. 排版：链接写成 [短锚文本](URL)，不许把裸 URL 夹进句子；不写表格；不写 # 标题；"
+            "正文里的 * _ | 不是语法时要转义；中英文之间加一个半角空格。\n"
+            "6. 不要输出多余解释、不要 Markdown 代码块。")
+        user = ("我的一句话：%s\n\n" % ask
+                + ("库里已有的卡名（连接卡只能接这些）：%s\n\n" % anchors if anchors else "")
+                + ("当前这份材料的正文（只依据它，别外推）：\n%s" % (excerpt or "（没挂材料，凭通用知识写，且必须标注不确定的地方）")))
+        try:
+            out = call_deepseek(user, system=system, max_tokens=2000)
+        except Exception as e:
+            return {"ok": False, "error": "模型没写成这张卡：" + str(e),
+                    "hint": "没配 API Key 就先用「自己写」那一栏，或到「模型配置」里填。"}
+        m = dict(re.findall(r"^(卡名|正文|用在哪|标签)[：:]\s*([\s\S]*?)(?=^(?:卡名|正文|用在哪|标签)[：:]|\Z)",
+                            out, re.M))
+        name = card_name((m.get("卡名") or out.splitlines()[0]).strip(), maxlen=30)
+        text = (m.get("正文") or out).strip()
+        use = (m.get("用在哪") or "").strip()
+        tags = re.split(r"[、,，;；\s]+", (m.get("标签") or "").strip())
+        if len(name) < 4:
+            return {"ok": False, "error": "模型给的卡名不能用（太短或不成句）", "hint": out[:160]}
+        r = self.add_card({"kind": kind, "name": name, "text": text, "use": use,
+                           "tags": tags, "source": src_rel, "ai": True})
+        if r.get("ok"):
+            r["generated"] = {"name": name, "text": text, "use": use,
+                              "tags": (r.get("meta") or {}).get("tags", [])}
+        r.pop("meta", None)
+        return r
 
     # ------------------------------------------------------------ cookie / 模型 / 批注
     def save_cookie(self, body):
@@ -1662,6 +2436,65 @@ class Handler(BaseHTTPRequestHandler):
                 "preview": re.sub(r"\s+", " ", text)[:220],
                 "error": info.get("error", ""), "hint": info.get("hint", "")}
 
+    def study_summary(self, body):
+        """今日 / 本周学习总结。证据分两半：
+        本机行为（读了哪张、停留多久、勾了哪条）只有客户端知道，由前端传进来；
+        卡片的正文由这里现读 —— 前端只带路径，不带正文，免得把整库内容在请求里搬一遍。"""
+        scope = (body.get("scope") or "day").strip()
+        if scope not in ("day", "week"):
+            return {"ok": False, "error": "scope 只能是 day 或 week"}
+        label, unit, days = ("今日", "天", 1) if scope == "day" else ("本周", "周", 7)
+        cutoff = time.time() - days * 86400
+        cards = scan_vault()
+        by_path = {c["path"]: c for c in cards}
+
+        # 新入库：按文件改动时间落在这个窗口里
+        made = [c for c in cards if c["mtime"] >= cutoff]
+        # 勾掉的条目：前端把 done log 里这一窗口的标题带过来
+        done_titles = [str(t)[:60] for t in (body.get("done") or [])][:20]
+        # 打开过的卡：{path, sec}
+        read = []
+        for r in (body.get("read") or []):
+            p = str(r.get("path") or "")
+            c = by_path.get(p)
+            if not c:
+                continue
+            read.append({"c": c, "sec": max(0, int(r.get("sec") or 0))})
+        read.sort(key=lambda x: -x["sec"])
+        read = read[:14]
+
+        lines = []
+        for i, item in enumerate(read, 1):
+            c = item["c"]
+            try:
+                fm, b = parse_frontmatter((VAULT / c["path"]).read_text(encoding="utf-8",
+                                                                        errors="replace"))
+            except Exception:
+                b = ""
+            gist = re.sub(r"\s+", " ", strip_code(b))[:260]
+            lines.append("%d. 《%s》｜%s｜%s 字｜本机停留 %d 秒｜双链 %d 条\n   %s"
+                         % (i, c["title"], KIND_LABEL.get(c["kind"], c["kind"]),
+                            c["chars"], item["sec"], len(c["links"] or []), gist))
+        if not (made or done_titles or read):
+            return {"ok": False, "error": "这一%s没有任何可总结的记录" % unit,
+                    "hint": "去读两张卡或勾一条复习，再回来点这个按钮。"}
+
+        user = SUMMARY_PROMPT.format(
+            label=label, unit=unit,
+            span=time.strftime("%Y-%m-%d", time.localtime(cutoff)) + " 之后",
+            made_n=len(made),
+            made="、".join("《%s》(%s)" % (c["title"][:20], KIND_LABEL.get(c["kind"], ""))
+                           for c in made[:20]) or "没有",
+            done_n=len(done_titles), done="、".join(done_titles) or "没有",
+            read_n=len(read), read="\n".join(lines) or "没有")
+        try:
+            out = call_deepseek(user, system=SUMMARY_SYSTEM, max_tokens=2600)
+        except Exception as e:
+            return {"ok": False, "error": "模型没写成这份总结：" + str(e),
+                    "hint": "没配 API Key 就先到「模型配置」里填。"}
+        return {"ok": True, "scope": scope, "label": label, "markdown": out.strip(),
+                "evidence": {"made": len(made), "done": len(done_titles), "read": len(read)}}
+
     def llm_test(self):
         cfg = load_config()
         try:
@@ -1721,11 +2554,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 data = {"done": []}
         data.setdefault("done", [])
+        data.setdefault("log", [])
         if body.get("undo"):
             if title in data["done"]:
                 data["done"].remove(title)
-        elif title not in data["done"]:
-            data["done"].append(title)
+            data["log"] = [x for x in data["log"]
+                           if not (isinstance(x, dict) and x.get("title") == title)]
+        else:
+            if title not in data["done"]:
+                data["done"].append(title)
+            if not any(isinstance(x, dict) and x.get("title") == title for x in data["log"]):
+                data["log"].append({"title": title, "at": time.strftime("%Y-%m-%d %H:%M")})
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"ok": True, "done": title in data["done"]}
@@ -1745,10 +2584,11 @@ class Handler(BaseHTTPRequestHandler):
         return {"ok": True}
 
     def set_status(self, body):
-        """卡片状态就地翻：待吃透 ⇄ 待实践。仪表盘那一格靠它，不是靠手改 frontmatter。"""
+        """状态就地翻：不传 status 时 待吃透 ⇄ 待实践。仪表盘和阅读页都靠它写 frontmatter。
+        原料也要有状态（它同样要复习），所以 raw/ 和 wiki/ 都放行；只增不改管的是正文，不是状态。"""
         rel = (body.get("path") or "").strip().replace("\\", "/")
-        if not rel.startswith("wiki/"):
-            return {"ok": False, "error": "只有 wiki 下面的卡能标状态；原料不参与复习流转"}
+        if not (rel.startswith("wiki/") or rel.startswith("raw/")):
+            return {"ok": False, "error": "只有原料（raw/）和卡片（wiki/）有状态可改；系统页不参与"}
         p = (VAULT / rel).resolve()
         if not str(p).startswith(str(VAULT.resolve())) or not p.is_file():
             return {"ok": False, "error": "找不到这张卡"}
@@ -1756,22 +2596,85 @@ class Handler(BaseHTTPRequestHandler):
         s = p.read_text(encoding="utf-8")
         cur = re.search(r"^status:\s*(.*)$", s, re.M)
         if not cur:
-            return {"ok": False, "error": "这张卡没有 status 字段，先用「改写」加一行 status: 待吃透"}
-        new = want if want in STATUSES else (
-            "待吃透" if cur.group(1).strip() == "待实践" else "待实践")
+            return {"ok": False, "error": "这份文件没有 status 字段，先用「改写」加一行 status: 待吃透"}
+        if want:
+            new = norm_status(want)
+            if new not in STATUSES:
+                return {"ok": False,
+                        "error": "状态只能是这几个值之一：%s" % "、".join(STATUSES),
+                        "hint": "「%s」不是本库的状态；要表达别的意思请写进正文，不要塞进 status 字段" % want[:30]}
+        else:
+            new = "待吃透" if norm_status(cur.group(1)) == "待实践" else "待实践"
         s = s[:cur.start(1)] + new + s[cur.end(1):]
         p.write_text(s, encoding="utf-8")
         return {"ok": True, "status": new, "path": rel}
 
-    def drop_card(self, body):
-        """删卡 = 移进 inbox/trash/，不硬删（改回来就从这儿拿）。原料 raw/ 不给删：只增不改是规矩。"""
+    def set_tags(self, body):
+        """标签可以人工加删：只动 frontmatter 里那一行 tags: [...]，正文一个字不碰。"""
         rel = (body.get("path") or "").strip().replace("\\", "/")
-        if not rel.startswith("wiki/"):
-            return {"ok": False,
-                    "error": "只有 wiki 下面的卡能删；原料（raw/）按规矩只增不改"}
+        if not (rel.startswith("wiki/") or rel.startswith("raw/")):
+            return {"ok": False, "error": "只有原料和卡片能改标签"}
         p = (VAULT / rel).resolve()
         if not str(p).startswith(str(VAULT.resolve())) or not p.is_file():
-            return {"ok": False, "error": "找不到这张卡"}
+            return {"ok": False, "error": "找不到这份文件"}
+        raw = body.get("tags")
+        if isinstance(raw, str):
+            raw = re.split(r"[,，\s]+", raw)
+        tags = []
+        for t in (raw or []):
+            t = str(t).strip().lstrip("#")
+            if t and t not in tags:
+                tags.append(t)
+        keep = clean_tags(tags, limit=24)
+        rejected = [t for t in tags if t not in keep]
+        if not tags:
+            return {"ok": False, "error": "标签内容为空"}
+        if rejected and not keep:
+            return {"ok": False,
+                    "error": "这些词不能当标签：%s" % "、".join(rejected[:4]),
+                    "hint": "标签要能用来筛出一堆卡：不写状态词、维度词、人名、平台名、数字、"
+                            "代码里的词和色值，长度不超过 %d 字" % TAG_MAX_LEN}
+        if len(tags) > 24:
+            return {"ok": False, "error": "标签最多 24 个，先删掉一些"}
+        s = p.read_text(encoding="utf-8")
+        head, sep, rest = s.partition("\n---\n")
+        if not sep:
+            return {"ok": False, "error": "这份文件没有 frontmatter，加不了标签"}
+        line = "tags: [%s]" % ", ".join(keep)
+        m = re.search(r"^tags:.*$", head, re.M)
+        if m:
+            head = head[:m.start()] + line + head[m.end():]
+        else:
+            head = head.rstrip("\n") + "\n" + line + "\n"
+        p.write_text(head + sep + rest, encoding="utf-8")
+        out = {"ok": True, "tags": keep, "path": rel}
+        if rejected:
+            out["rejected"] = rejected
+        return out
+
+    def drop_card(self, body):
+        """删 = 移进 inbox/trash/，不硬删（改回来就从这儿拿）。
+        原料也可以删，但它长出来的卡片不动——那些卡已经离开原料独立存在了，
+        删回来路不删去处；前端要把这句话原样告诉用户。"""
+        rel = (body.get("path") or "").strip().replace("\\", "/")
+        if not (rel.startswith("wiki/") or rel.startswith("raw/")):
+            return {"ok": False, "error": "只有原料（raw/）和卡片（wiki/）能删；系统页请自己改文件"}
+        p = (VAULT / rel).resolve()
+        if not str(p).startswith(str(VAULT.resolve())) or not p.is_file():
+            return {"ok": False, "error": "找不到这份文件"}
+        grew = []
+        if rel.startswith("raw/"):
+            # 这份原料长出的卡：文末那一节 + 出处里写着本原料标题的，都算
+            try:
+                fm0, _b0 = parse_frontmatter(p.read_text(encoding="utf-8", errors="replace"))
+            except Exception:
+                fm0 = {}
+            my_title = str(fm0.get("title") or p.stem)
+            for c in scan_vault():
+                if not c["path"].startswith("wiki/"):
+                    continue
+                if my_title in c["links"] or c["source"] == rel:
+                    grew.append({"path": c["path"], "title": c["title"]})
         trash = VAULT / "inbox" / "trash"
         trash.mkdir(parents=True, exist_ok=True)
         dest = trash / p.name
@@ -1788,13 +2691,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 data = {}
             tasks = data.get("tasks", [])
-            keep = [t for t in tasks if (t.get("card") or "").replace("\\", "/") != rel]
+            keep = [t for t in tasks if (t.get("card") or "").replace("\\", "/") != rel
+                    and (t.get("raw") or "").replace("\\", "/") != rel]
             removed = len(tasks) - len(keep)
             if removed:
                 data["tasks"] = keep
                 f.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"ok": True, "trash": str(dest.relative_to(VAULT)).replace("\\", "/"),
-                "tasksRemoved": removed}
+                "tasksRemoved": removed, "kind": card_kind(rel), "grew": grew}
 
 
 def main():

@@ -1,0 +1,377 @@
+/* ==========================================================================
+   衣柜 · 8 套皮肤 v2 —— 明亮版
+   依据换成《为每个目的地认真打扮 #机票转场 #旅行穿搭》（原来是陶阿狗君，13.3s）。
+   该片全片主色实测：#FFFFFF 31% / #F4F4F4 14% / #ECECEC 11% / #AFB2BB 11%
+                    / #D2CCCD 10% / #3D3B42 10% / #857E81 10%
+   → 白是主角，深灰只配当文字和描边，不能当底色。
+   上一版的错：把影棚顶棚做成深灰（--sky-top #4C4A55），整页像没开灯。
+   8 套里只留 2 套深色。每套的点缀色取自该片对应那 1 秒里人物身上的衣服。
+   ========================================================================== */
+
+/* 01 雪山白 · 近白 + 炭黑线条（默认，最亮） */
+:root,
+[data-suit="snow"] {
+  --suit-name: "雪山白";
+  --suit-en: "SNOW / SET 01";
+  --suit-src: "0.0–1.0s";
+  --sky-top: #E4E2EA;
+  --sky-mid: #FCFBFD;
+  --sky-floor: #D8D5E0;
+  --bg-page: #F6F5F9;
+  --glass: rgba(255, 255, 255, .78);
+  --glass-2: rgba(255, 255, 255, .52);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(61, 59, 66, .13);
+  --line-hi: rgba(255, 255, 255, .95);
+  --ink: #2A2732;
+  --ink-2: #5C5866;
+  --ink-3: #928D9E;
+  --accent: #2F5D8A;
+  --accent-soft: rgba(47, 93, 138, .12);
+  --wood: #A8703F;
+  --wood-soft: rgba(168, 112, 63, .13);
+  --blush: #D9B7B9;
+  --skin: #F6E7E1;
+  --spot: rgba(255, 253, 250, .70);
+  --checker-a: rgba(255, 255, 255, .55);
+  --checker-b: rgba(150, 145, 165, .10);
+  --shadow: 0 18px 42px -24px rgba(42, 39, 50, .34);
+  --cf-1: #2F5D8A; --cf-2: #A8703F; --cf-3: #D9B7B9; --cf-4: #2A2732;
+}
+
+/* 02 雾粉 ·  dusty rose 主色（暖白） */
+[data-suit="dusty"] {
+  --suit-name: "雾粉";
+  --suit-en: "DUSTY ROSE / SET 02";
+  --suit-src: "4.0–5.0s";
+  --sky-top: #EADFE0;
+  --sky-mid: #FDF8F7;
+  --sky-floor: #E2D2D2;
+  --bg-page: #F8F3F2;
+  --glass: rgba(255, 253, 252, .80);
+  --glass-2: rgba(255, 250, 249, .54);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(88, 62, 62, .12);
+  --line-hi: rgba(255, 255, 255, .95);
+  --ink: #33262A;
+  --ink-2: #6A5559;
+  --ink-3: #A08C8F;
+  --accent: #A9635E;
+  --accent-soft: rgba(169, 99, 94, .12);
+  --wood: #8C5B44;
+  --wood-soft: rgba(140, 91, 68, .12);
+  --blush: #E8C9C6;
+  --skin: #F7E9E3;
+  --spot: rgba(255, 250, 246, .72);
+  --checker-a: rgba(255, 255, 255, .58);
+  --checker-b: rgba(170, 140, 140, .09);
+  --shadow: 0 18px 42px -24px rgba(51, 38, 42, .30);
+  --cf-1: #A9635E; --cf-2: #8C5B44; --cf-3: #E8C9C6; --cf-4: #33262A;
+}
+
+/* 03 石板蓝 · 冷灰蓝 + 浅薰衣草灰 */
+[data-suit="slate"] {
+  --suit-name: "石板蓝";
+  --suit-en: "SLATE / SET 03";
+  --suit-src: "3.0–4.0s";
+  --sky-top: #DDE1E9;
+  --sky-mid: #F8FAFD;
+  --sky-floor: #CFD5E0;
+  --bg-page: #EFF1F6;
+  --glass: rgba(255, 255, 255, .78);
+  --glass-2: rgba(250, 251, 254, .52);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(47, 48, 58, .13);
+  --line-hi: rgba(255, 255, 255, .95);
+  --ink: #24262F;
+  --ink-2: #565A66;
+  --ink-3: #8C909E;
+  --accent: #4A5D78;
+  --accent-soft: rgba(74, 93, 120, .12);
+  --wood: #9A6B45;
+  --wood-soft: rgba(154, 107, 69, .12);
+  --blush: #C3CBD8;
+  --skin: #F3E8E3;
+  --spot: rgba(252, 253, 255, .70);
+  --checker-a: rgba(255, 255, 255, .56);
+  --checker-b: rgba(120, 128, 145, .10);
+  --shadow: 0 18px 42px -24px rgba(36, 38, 47, .32);
+  --cf-1: #4A5D78; --cf-2: #9A6B45; --cf-3: #C3CBD8; --cf-4: #24262F;
+}
+
+/* 04 蔷薇红 · 奶油底 + 酒红点缀（全片唯一的正色） */
+[data-suit="rose"] {
+  --suit-name: "蔷薇红";
+  --suit-en: "WINE ROSE / SET 04";
+  --suit-src: "7.0–8.0s";
+  --sky-top: #E9E2E4;
+  --sky-mid: #FEFCFC;
+  --sky-floor: #DCD3D6;
+  --bg-page: #F7F4F4;
+  --glass: rgba(255, 255, 255, .80);
+  --glass-2: rgba(253, 250, 250, .54);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(70, 50, 55, .12);
+  --line-hi: rgba(255, 255, 255, .95);
+  --ink: #2C2226;
+  --ink-2: #62545A;
+  --ink-3: #9A8A8F;
+  --accent: #A63A4B;
+  --accent-soft: rgba(166, 58, 75, .11);
+  --wood: #8E5A3C;
+  --wood-soft: rgba(142, 90, 60, .12);
+  --blush: #E3BFC2;
+  --skin: #F6E8E3;
+  --spot: rgba(255, 251, 250, .72);
+  --checker-a: rgba(255, 255, 255, .58);
+  --checker-b: rgba(160, 130, 138, .09);
+  --shadow: 0 18px 42px -24px rgba(44, 34, 38, .30);
+  --cf-1: #A63A4B; --cf-2: #8E5A3C; --cf-3: #E3BFC2; --cf-4: #2C2226;
+}
+
+/* 05 驼米 · 暖驼 + 奶油（机票转场里那件大衣） */
+[data-suit="taupe"] {
+  --suit-name: "驼米";
+  --suit-en: "CAMEL / SET 05";
+  --suit-src: "10.0–11.0s";
+  --sky-top: #E8E0D6;
+  --sky-mid: #FDFAF5;
+  --sky-floor: #DDD2C4;
+  --bg-page: #F6F2EB;
+  --glass: rgba(255, 253, 250, .80);
+  --glass-2: rgba(253, 249, 243, .54);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(80, 62, 46, .13);
+  --line-hi: rgba(255, 255, 255, .95);
+  --ink: #2E2620;
+  --ink-2: #655849;
+  --ink-3: #9C8D7C;
+  --accent: #8A5A38;
+  --accent-soft: rgba(138, 90, 56, .12);
+  --wood: #5E4632;
+  --wood-soft: rgba(94, 70, 50, .12);
+  --blush: #D6C0A8;
+  --skin: #F5E6DA;
+  --spot: rgba(255, 251, 244, .72);
+  --checker-a: rgba(255, 255, 255, .56);
+  --checker-b: rgba(150, 128, 100, .10);
+  --shadow: 0 18px 42px -24px rgba(46, 38, 32, .30);
+  --cf-1: #8A5A38; --cf-2: #5E4632; --cf-3: #D6C0A8; --cf-4: #2E2620;
+}
+
+/* 06 牛仔蓝 · 高饱和丹宁 + 亮白（从衣柜变装那条留下来的最亮一套） */
+[data-suit="denim"] {
+  --suit-name: "牛仔蓝";
+  --suit-en: "DENIM / SET 06";
+  --suit-src: "衣柜变装 9.0–10.0s";
+  --sky-top: #E1E6EE;
+  --sky-mid: #FBFCFE;
+  --sky-floor: #D2DAE6;
+  --bg-page: #F1F4F8;
+  --glass: rgba(255, 255, 255, .80);
+  --glass-2: rgba(248, 250, 253, .54);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(30, 40, 55, .12);
+  --line-hi: rgba(255, 255, 255, .95);
+  --ink: #1E232C;
+  --ink-2: #4E5764;
+  --ink-3: #87909E;
+  --accent: #1D6899;
+  --accent-soft: rgba(29, 104, 153, .12);
+  --wood: #A8703F;
+  --wood-soft: rgba(168, 112, 63, .12);
+  --blush: #B9C9D8;
+  --skin: #F3E8E2;
+  --spot: rgba(250, 253, 255, .72);
+  --checker-a: rgba(255, 255, 255, .58);
+  --checker-b: rgba(110, 125, 145, .09);
+  --shadow: 0 18px 42px -24px rgba(30, 35, 44, .30);
+  --cf-1: #1D6899; --cf-2: #A8703F; --cf-3: #B9C9D8; --cf-4: #1E232C;
+}
+
+/* 07 夜航 · 深炭（暗色 1/2，留给晚上） */
+[data-suit="night"] {
+  --suit-name: "夜航";
+  --suit-en: "NIGHT FLIGHT / SET 07";
+  --suit-src: "11.0–12.0s";
+  --sky-top: #1B1D26;
+  --sky-mid: #454A58;
+  --sky-floor: #14161C;
+  --bg-page: #1E2028;
+  --glass: rgba(74, 79, 94, .48);
+  --glass-2: rgba(48, 52, 63, .52);
+  --glass-hi: rgba(255, 255, 255, .16);
+  --line: rgba(226, 229, 238, .14);
+  --line-hi: rgba(255, 255, 255, .22);
+  --ink: #F0F1F5;
+  --ink-2: #B6BCC9;
+  --ink-3: #83899A;
+  --accent: #8FB4D6;
+  --accent-soft: rgba(143, 180, 214, .15);
+  --wood: #C89A6E;
+  --wood-soft: rgba(200, 154, 110, .16);
+  --blush: #8A7B88;
+  --skin: #E6D6CE;
+  --spot: rgba(226, 232, 245, .16);
+  --checker-a: rgba(255, 255, 255, .055);
+  --checker-b: rgba(0, 0, 0, .24);
+  --shadow: 0 22px 50px -26px rgba(0, 0, 0, .72);
+  --cf-1: #F0F1F5; --cf-2: #C89A6E; --cf-3: #8FB4D6; --cf-4: #8A7B88;
+}
+
+/* 08 墨黑 · 炭黑 + 雾粉点缀（暗色 2/2） */
+[data-suit="ink"] {
+  --suit-name: "墨黑";
+  --suit-en: "INK / SET 08";
+  --suit-src: "衣柜变装 5.0–6.0s";
+  --sky-top: #101014;
+  --sky-mid: #33343E;
+  --sky-floor: #0C0C10;
+  --bg-page: #15151A;
+  --glass: rgba(58, 59, 70, .52);
+  --glass-2: rgba(36, 37, 45, .54);
+  --glass-hi: rgba(255, 255, 255, .15);
+  --line: rgba(226, 226, 234, .13);
+  --line-hi: rgba(255, 255, 255, .20);
+  --ink: #EDECEF;
+  --ink-2: #A8A7B2;
+  --ink-3: #75747F;
+  --accent: #D3AFAE;
+  --accent-soft: rgba(211, 175, 174, .15);
+  --wood: #B0794F;
+  --wood-soft: rgba(176, 121, 79, .16);
+  --blush: #7E7382;
+  --skin: #E2D2CA;
+  --spot: rgba(235, 235, 245, .14);
+  --checker-a: rgba(255, 255, 255, .05);
+  --checker-b: rgba(0, 0, 0, .26);
+  --shadow: 0 22px 50px -26px rgba(0, 0, 0, .78);
+  --cf-1: #EDECEF; --cf-2: #D3AFAE; --cf-3: #B0794F; --cf-4: #75747F;
+}
+
+/* ==========================================================================
+   09–12「旅行打卡」四套 —— 依据《让我们先打开地图… #3d地图转场 #旅行打卡》
+   （原来是陶阿狗君，12.1s）。从地标是上海那一帧起往后数正好四套。
+   每套的取值都是该 1 秒窗口里人物+背景的实测主色，秒数写在 --suit-src。
+   这四套和 IP 的衣服是同一套东西：切皮肤时 IP 跟着换装（app.js 里 suit.ip）。
+   ========================================================================== */
+
+/* 09 上海 · 天蓝背心 + 腰间雾粉衬衫（实测 4.5–6.0s：#93C7E0 / #B4CFE0 / #C7BABB / #373B43） */
+[data-suit="shanghai"] {
+  --suit-name: "上海·天蓝";
+  --suit-en: "SHANGHAI / SET 09";
+  --suit-src: "4.5–6.0s";
+  --sky-top: #BFE2F5;
+  --sky-mid: #F4FBFE;
+  --sky-floor: #DCE9F0;
+  --bg-page: #F4FAFD;
+  --glass: rgba(255, 255, 255, .80);
+  --glass-2: rgba(255, 255, 255, .54);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(34, 70, 88, .13);
+  --line-hi: rgba(255, 255, 255, .96);
+  --ink: #22333D;
+  --ink-2: #52707E;
+  --ink-3: #93AEBB;
+  --accent: #1E9BCF;
+  --accent-soft: rgba(30, 155, 207, .14);
+  --wood: #E0A9A2;
+  --wood-soft: rgba(224, 169, 162, .18);
+  --blush: #F2C7C2;
+  --skin: #F7E3D8;
+  --spot: rgba(255, 253, 250, .72);
+  --checker-a: rgba(255, 255, 255, .58);
+  --checker-b: rgba(120, 160, 185, .11);
+  --shadow: 0 18px 42px -24px rgba(34, 70, 88, .32);
+  --cf-1: #1E9BCF; --cf-2: #E0A9A2; --cf-3: #FFFFFF; --cf-4: #37474F;
+}
+
+/* 10 伦敦 · 橄榄棕西装 + 焦糖皮包（实测 6.25–8.0s：#262219 / #60553A / #DEA46A / #A5794B / 底 #DDDBCF） */
+[data-suit="london"] {
+  --suit-name: "伦敦·橄榄棕";
+  --suit-en: "LONDON / SET 10";
+  --suit-src: "6.25–8.0s";
+  --sky-top: #E3DCCB;
+  --sky-mid: #F7F3EA;
+  --sky-floor: #D6CBB6;
+  --bg-page: #F6F2E9;
+  --glass: rgba(255, 253, 248, .80);
+  --glass-2: rgba(255, 252, 245, .54);
+  --glass-hi: rgba(255, 255, 255, .97);
+  --line: rgba(60, 50, 32, .14);
+  --line-hi: rgba(255, 255, 255, .95);
+  --ink: #2A251C;
+  --ink-2: #5C5344;
+  --ink-3: #94897A;
+  --accent: #6E6035;
+  --accent-soft: rgba(110, 96, 53, .14);
+  --wood: #B4783C;
+  --wood-soft: rgba(180, 120, 60, .15);
+  --blush: #D9B98C;
+  --skin: #F3E4D2;
+  --spot: rgba(255, 250, 238, .70);
+  --checker-a: rgba(255, 253, 246, .56);
+  --checker-b: rgba(120, 100, 66, .12);
+  --shadow: 0 18px 42px -24px rgba(42, 37, 28, .34);
+  --cf-1: #6E6035; --cf-2: #B4783C; --cf-3: #E8DFCB; --cf-4: #2A251C;
+}
+
+/* 11 纽约 · 白短T + 黑皮裤（实测 8.25–10.0s：#F6FBFC / #1D2027 / #484D51 / #CCC1BF / #998A7E） */
+[data-suit="newyork"] {
+  --suit-name: "纽约·黑白蓝";
+  --suit-en: "NEW YORK / SET 11";
+  --suit-src: "8.25–10.0s";
+  --sky-top: #DDE7EE;
+  --sky-mid: #FAFCFE;
+  --sky-floor: #C9D3DA;
+  --bg-page: #F7FAFC;
+  --glass: rgba(255, 255, 255, .80);
+  --glass-2: rgba(248, 251, 253, .54);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(29, 32, 39, .13);
+  --line-hi: rgba(255, 255, 255, .96);
+  --ink: #1D2027;
+  --ink-2: #4A5158;
+  --ink-3: #8A939B;
+  --accent: #2F6FA8;
+  --accent-soft: rgba(47, 111, 168, .13);
+  --wood: #8C7A6B;
+  --wood-soft: rgba(140, 122, 107, .14);
+  --blush: #C9D3DB;
+  --skin: #F2E8E2;
+  --spot: rgba(255, 254, 252, .70);
+  --checker-a: rgba(255, 255, 255, .58);
+  --checker-b: rgba(90, 105, 118, .12);
+  --shadow: 0 18px 42px -24px rgba(29, 32, 39, .34);
+  --cf-1: #1D2027; --cf-2: #2F6FA8; --cf-3: #FFFFFF; --cf-4: #B9A79A;
+}
+
+/* 12 东京 · 驼色开衫 + 酒红领结（实测 10.25–11.75s：#9D8976 / #6E5250 / #C4B1A9 / #2E3031，领结最红像素 #762838） */
+[data-suit="tokyo"] {
+  --suit-name: "东京·驼与酒红";
+  --suit-en: "TOKYO / SET 12";
+  --suit-src: "10.25–11.75s";
+  --sky-top: #E7DFD2;
+  --sky-mid: #FDFAF4;
+  --sky-floor: #DCD6CB;
+  --bg-page: #FBF7F0;
+  --glass: rgba(255, 254, 250, .82);
+  --glass-2: rgba(255, 252, 246, .55);
+  --glass-hi: rgba(255, 255, 255, .98);
+  --line: rgba(60, 44, 38, .13);
+  --line-hi: rgba(255, 255, 255, .96);
+  --ink: #2B2422;
+  --ink-2: #5F524C;
+  --ink-3: #978880;
+  --accent: #8E2B3F;
+  --accent-soft: rgba(142, 43, 63, .13);
+  --wood: #B98A55;
+  --wood-soft: rgba(185, 138, 85, .16);
+  --blush: #E3B7A6;
+  --skin: #F7E7DA;
+  --spot: rgba(255, 251, 244, .72);
+  --checker-a: rgba(255, 253, 248, .58);
+  --checker-b: rgba(120, 96, 78, .12);
+  --shadow: 0 18px 42px -24px rgba(43, 36, 34, .32);
+  --cf-1: #8E2B3F; --cf-2: #B98A55; --cf-3: #2E3031; --cf-4: #E8CDB8;
+}
